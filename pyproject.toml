@@ -1,0 +1,22 @@
+[project]
+name = "reward-vlm"
+version = "0.0.1"
+description = "Vision-Language Model based reward functions"
+requires-python = ">=3.10"
+dependencies = [
+    "google-genai",
+    "iisignature",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rvlm"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.uv.extra-build-dependencies]
+iisignature = ["numpy"]
