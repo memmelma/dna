@@ -102,10 +102,10 @@ class StreamingDTW(StreamingDistanceBase):
             self.Rs_new = [compute_acc_cost_matrix(cn, R_cache=rn) for cn, rn in zip(self.Cs_new, self.Rs_new)]
 
         if self.flexible_end:
-            # costs = [np.min(rn[:, -1]) for rn in self.Rs_new]
-            # idcs = [np.argmin(rn[:, -1]) for rn in self.Rs_new]
-            costs = [np.min(rn[-1:]) for rn in self.Rs_new]
-            idcs = [np.argmin(rn[-1,:]) for rn in self.Rs_new]
+            costs = [np.min(rn[:, -1]) for rn in self.Rs_new]
+            idcs = [np.argmin(rn[:, -1]) for rn in self.Rs_new]
+            # costs = [np.min(rn[-1:]) for rn in self.Rs_new]
+            # idcs = [np.argmin(rn[-1,:]) for rn in self.Rs_new]
         else:
             costs = [rn[-1, -1] for rn in self.Rs_new]
             idcs = [-1] * len(costs)
@@ -126,4 +126,4 @@ class StreamingDTW(StreamingDistanceBase):
         # with open("dtw_cache_data.pkl", "wb") as f:
         #     pickle.dump(data, f)
 
-        return costs, idcs
+        return costs # , idcs
