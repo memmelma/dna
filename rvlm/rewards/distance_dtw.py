@@ -126,4 +126,4 @@ class StreamingDTW(StreamingDistanceBase):
         # with open("dtw_cache_data.pkl", "wb") as f:
         #     pickle.dump(data, f)
 
-        return costs # , idcs
+        return np.array(costs) # , idcs

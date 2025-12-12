@@ -54,4 +54,4 @@ class StreamingSignature(StreamingDistanceBase):
         if self.normalize_cost:
             costs = [float(c) / len(self.query) for c in costs]
     
-        return costs
+        return np.array(costs)
