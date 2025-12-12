@@ -8,18 +8,21 @@ import numpy as np
 from google import genai
 from google.genai import types
 
-gemini_robotics = True
-if gemini_robotics:
-    # somehow I have free access to gemini robotics
-    MODEL_ID = "gemini-robotics-er-1.5-preview"
-    # load secret from /home/memmelma/Projects/vla_rl/reward_vlm/rvlm/requests/secret
-    from rvlm.requests.secret import GOOGLE_API_KEY
-else:
-    # gemini 3 requires paid account
-    MODEL_ID = "gemini-3-pro-preview"
-    GOOGLE_API_KEY = userdata.get("GOOGLE_API_KEY_PAID")
+try:
+    gemini_robotics = True
+    if gemini_robotics:
+        # somehow I have free access to gemini robotics
+        MODEL_ID = "gemini-robotics-er-1.5-preview"
+        # load secret from /home/memmelma/Projects/vla_rl/reward_vlm/rvlm/requests/secret
+        from rvlm.requests.secret import GOOGLE_API_KEY
+    else:
+        # gemini 3 requires paid account
+        MODEL_ID = "gemini-3-pro-preview"
+        GOOGLE_API_KEY = userdata.get("GOOGLE_API_KEY_PAID")
+    client = genai.Client(api_key=GOOGLE_API_KEY)
 
-client = genai.Client(api_key=GOOGLE_API_KEY)
+except Exception as e:
+    print(f"WARNING when initializing gemini utils: {e}")
 
 def parse_json(json_output):
   # Parsing out the markdown fencing
