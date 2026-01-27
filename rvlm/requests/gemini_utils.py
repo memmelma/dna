@@ -11,14 +11,14 @@ from google.genai import types
 try:
     gemini_robotics = True
     if gemini_robotics:
-        # somehow I have free access to gemini robotics
         MODEL_ID = "gemini-robotics-er-1.5-preview"
         # load secret from /home/memmelma/Projects/vla_rl/reward_vlm/rvlm/requests/secret
         from rvlm.requests.secret import GOOGLE_API_KEY
     else:
         # gemini 3 requires paid account
-        MODEL_ID = "gemini-3-pro-preview"
-        GOOGLE_API_KEY = userdata.get("GOOGLE_API_KEY_PAID")
+        MODEL_ID = "gemini-3-flash-preview"
+        from rvlm.requests.secret import GOOGLE_API_KEY
+
     client = genai.Client(api_key=GOOGLE_API_KEY)
 
 except Exception as e:
@@ -49,11 +49,13 @@ def img_to_mime(img):
             mime_type='image/jpeg',
         )
 
-def create_config(temperature=0.5, thinking_budget=0):
+def create_config(temperature=0.5, thinking_budget=0, include_thoughts=False):
     return types.GenerateContentConfig(
         temperature=temperature,
-        thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget),
-        # automatic_function_calling=types.AutomaticFunctionCallingConfig(maximum_remote_calls=-1)
+        thinking_config=types.ThinkingConfig(
+            thinking_budget=thinking_budget,
+            include_thoughts=include_thoughts,  # Must be True to stream thinking chunks
+        ),
     )
 
 def call_gemini_robotics_er(img, prompt, config=None):
@@ -65,6 +67,71 @@ def call_gemini_robotics_er(img, prompt, config=None):
         contents=[img, prompt],
         config=config,
     )
-
-    # print(image_response.text)
     return parse_json(image_response.text)
+
+async def call_gemini_robotics_er_async(img, prompt, config=None):
+    if config is None:
+        config = create_config()
+
+    image_response = await client.aio.models.generate_content(
+        model=MODEL_ID,
+        contents=[img, prompt],
+        config=config,
+    )
+    print(image_response.text)
+    return parse_json(image_response.text)
+
+def call_gemini_robotics_er_streaming(img, prompt, config=None, verbose=True):
+    """
+    Streaming version with timing info.
+    
+    Note: To see thinking chunks, use create_config(..., include_thoughts=True).
+    Without include_thoughts, first chunk arrives only after thinking completes.
+    """
+    if config is None:
+        config = create_config()
+
+    start = time.time()
+    if verbose:
+        print(f"[{time.strftime('%H:%M:%S')}] Sending request to {MODEL_ID}...")
+
+    response_stream = client.models.generate_content_stream(
+        model=MODEL_ID,
+        contents=[img, prompt],
+        config=config,
+    )
+
+    full_text = ""
+    first_chunk = True
+    first_output = True
+    for chunk in response_stream:
+        now = time.time()
+        
+        # Check if this chunk contains thinking vs output
+        is_thinking = False
+        if hasattr(chunk, 'candidates') and chunk.candidates:
+            for candidate in chunk.candidates:
+                if hasattr(candidate, 'content') and candidate.content:
+                    for part in candidate.content.parts:
+                        if hasattr(part, 'thought') and part.thought:
+                            is_thinking = True
+        
+        if first_chunk:
+            if verbose:
+                label = "queue wait" if is_thinking else "queue + thinking"
+                print(f"[{time.strftime('%H:%M:%S')}] First chunk after {now - start:.1f}s ({label})")
+            first_chunk = False
+        
+        if is_thinking and verbose:
+            print("T", end="", flush=True)
+        
+        if chunk.text:
+            if first_output and verbose:
+                print(f"\n[{time.strftime('%H:%M:%S')}] Output starts at {now - start:.1f}s")
+                first_output = False
+            full_text += chunk.text
+
+    if verbose:
+        print(f"[{time.strftime('%H:%M:%S')}] Done in {time.time() - start:.1f}s")
+
+    return parse_json(full_text)
