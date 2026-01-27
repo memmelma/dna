@@ -1,14 +1,15 @@
 import json
 import textwrap
+import asyncio
 import numpy as np
-from rvlm.requests.gemini_utils import create_config, img_to_mime, call_gemini_robotics_er
+from rvlm.requests.gemini_utils import create_config, img_to_mime, call_gemini_robotics_er, call_gemini_robotics_er_async
 
 def get_obj_labels_prompt(task: str):
     prompt = textwrap.dedent("""\
-    List the object parts and descriptors (e.g., top, bottom, handle, ...) relevant to the task: {{TASK}}
+    List the object parts and (multiple) descriptors (e.g., top, bottom, handle, center, left, right, blue, green, transparent, ...) that are relevant to completing the task: {{TASK}}
 
     The answer should follow the JSON format:
-    [{"label": <object_name>_<descriptor>}, ...]
+    [{"label": <object_name>_<descriptors>}, ...]
     """)
     prompt = prompt.replace("{{TASK}}", task)
     return prompt
@@ -16,10 +17,11 @@ def get_obj_labels_prompt(task: str):
 def get_obj_points_prompt(task: str, obj_labels: list[dict]):
  
     prompt = textwrap.dedent("""\
-    Point to object parts {{LABELS}}:
+    Point to the following object parts: {{LABELS}}
+    All object parts exist in the image.
 
     The answer should follow the JSON format:
-    [{"label": <object_name>_<label_0>, "point": [<point>]}, ...]
+    [{"label": <object_label>, "point": [<point>]}, ...]
 
     The points are in [y, x] format normalized to 0-1000.""")
 
@@ -31,13 +33,15 @@ def get_obj_points_prompt(task: str, obj_labels: list[dict]):
 def get_obj_paths_prompt(task: str, points: list[dict], n_points: int):
     
     prompt = textwrap.dedent("""\
-        List {{N}} points for the trajectory each object in {{OBJECTS}} must follow to complete {{TASK}}.
-        Ensure the objects don't collide on their way and end up at the goal.
+        List {{N}} points for the trajectory each object in {{OBJECTS}} must follow to complete {{TASK}}. Mimic how the objects should move when grasped by a robot, i.e., consider collision avoidance, goal reaching, smooth arching motions, etc.
 
         You are given the following initial points {{POINTS}}
 
         The points should be labeled by order of the trajectory, from '0' (start
         point at left hand) to <n> (final point).
+
+        Smooth example motion:
+        [{"label": <object_name>_<label_0>, "points": [[185 104], [84, 74], [46, 54], [34, 30], [26, 51]]}]
 
         The answer should follow the JSON format:
         [{"label": <object_name>_<label_0>, "points": [<point_0>, <point_1>, ...]}, ...]
@@ -51,33 +55,51 @@ def get_obj_paths_prompt(task: str, points: list[dict], n_points: int):
 
     return prompt
 
-def get_obj_labels(task: str, img: np.ndarray, temperature: float = 0.2, thinking_budget: int = -1):
-    
-    prompt = get_obj_labels_prompt(task)
+
+def request_gemini(img: np.ndarray, prompt: str, temperature: float = 0.2, thinking_budget: int = -1):
     config = create_config(temperature=temperature, thinking_budget=thinking_budget)
-    
     mime = img_to_mime(img)
     json_output = call_gemini_robotics_er(mime, prompt, config)
-
     return json.loads(json_output)
+
+async def request_gemini_async(img: np.ndarray, prompt: str, temperature: float = 0.2, thinking_budget: int = -1):
+    config = create_config(temperature=temperature, thinking_budget=thinking_budget)
+    mime = img_to_mime(img)
+    json_output = await call_gemini_robotics_er_async(mime, prompt, config)
+    return json.loads(json_output)
+
+def request_gemini_batch(imgs: list[np.ndarray], prompts: list[str], temperature: float = 0.2, thinking_budget: int = -1):
+    async def request_async(imgs, prompts):
+        return await asyncio.gather(*[request_gemini_async(img=img, prompt=prompt, temperature=temperature, thinking_budget=thinking_budget) for img, prompt in zip(imgs, prompts)])
+    return asyncio.run(request_async(imgs, prompts))
+
+
+def get_obj_labels(task: str, img: np.ndarray, temperature: float = 0.2, thinking_budget: int = -1):
+    prompt = get_obj_labels_prompt(task)
+    return request_gemini(img=img, prompt=prompt, temperature=temperature, thinking_budget=thinking_budget)
+
+def get_obj_labels_batch(task: str, imgs: list[np.ndarray], temperature: float = 0.2, thinking_budget: int = -1):
+    prompts = [get_obj_labels_prompt(task) for _ in range(len(imgs))]
+    return request_gemini_batch(imgs=imgs, prompts=prompts, temperature=temperature, thinking_budget=thinking_budget)
+
 
 def get_obj_points_from_labels(task: str, img: np.ndarray, labels: list[dict], temperature: float = 0.2, thinking_budget: int = 100):
-    
     prompt = get_obj_points_prompt(task, labels)
-    config = create_config(temperature=temperature, thinking_budget=thinking_budget)
-    
-    mime = img_to_mime(img)
-    json_output = call_gemini_robotics_er(mime, prompt, config)
-    return json.loads(json_output)
+    return request_gemini(img=img, prompt=prompt, temperature=temperature, thinking_budget=thinking_budget)
+
+def get_obj_points_from_labels_batch(task: str, imgs: list[np.ndarray], labels: list[dict], temperature: float = 0.2, thinking_budget: int = 100):
+    prompts = [get_obj_points_prompt(task, labels) for _ in range(len(imgs))]
+    return request_gemini_batch(imgs=imgs, prompts=prompts, temperature=temperature, thinking_budget=thinking_budget)
+
 
 def get_obj_paths_from_points(task: str, img: np.ndarray, points: list[dict], n_points: int = 7, temperature: float = 0.2, thinking_budget: int = -1):
-
     prompt = get_obj_paths_prompt(task, points, n_points)
-    config = create_config(temperature=temperature, thinking_budget=thinking_budget)
-    
-    mime = img_to_mime(img)
-    json_output = call_gemini_robotics_er(mime, prompt, config)
-    return json.loads(json_output)
+    return request_gemini(img=img, prompt=prompt, temperature=temperature, thinking_budget=thinking_budget)
+
+def get_obj_paths_from_points_batch(task: str, imgs: list[np.ndarray], points: list[dict], n_points: int = 7, temperature: float = 0.2, thinking_budget: int = -1):
+    prompts = [get_obj_paths_prompt(task, points, n_points) for _ in range(len(imgs))]
+    return request_gemini_batch(imgs=imgs, prompts=prompts, temperature=temperature, thinking_budget=thinking_budget)
+
 
 def postprocess_obj_paths(obj_paths: list[dict], H: int, W: int):
     obj_paths_dict = {}
