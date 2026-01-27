@@ -79,6 +79,12 @@ class StreamingCoTracker:
         
         # Return latest position for each tracked point
         tracks = self.pred_tracks[0, -1].cpu().numpy()  # (N_points, 2)
+
+        # Clamp coordinates to valid pixel bounds to handle tracking failures
+        H, W = next_image.shape[:2]
+        tracks[:, 0] = np.clip(tracks[:, 0], 0, W - 1)  # x coordinates: [0, W-1]
+        tracks[:, 1] = np.clip(tracks[:, 1], 0, H - 1)  # y coordinates: [0, H-1]
+
         tracks_dict = {k: tracks[i][None, :] for i, k in enumerate(self.point_keys)}
 
         # Add current track to buffer
