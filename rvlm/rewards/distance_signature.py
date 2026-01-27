@@ -11,7 +11,7 @@ class StreamingSignature(StreamingDistanceBase):
     Signature Transforms for streaming data. Use to compute signature transforms between multiple series and a (streaming) query.
     """
 
-    def __init__(self, series, add_time_obs: bool = False, normalize_cost: bool = False, m=3):
+    def __init__(self, series, add_time_obs: bool = True, normalize_cost: bool = False, m=3):
         """
         series: list of numpy arrays (M, D)
         add_time_obs: whether to add time observations to the query
