@@ -213,7 +213,7 @@ class TrackingRewardWrapper(gym.Wrapper):
 
             # NOTE: new way of loading paths from hdf5
             import h5py
-            with h5py.File(dataset_path, "r") as f:
+            with h5py.File(dataset_path, "r", swmr=True) as f:
                 for dk in f["data"].keys():
                     obj_labels = f["data"][dk].attrs["obj_labels"].tolist()
                     keys = list(f["data"][dk]["obs"].keys())
@@ -399,13 +399,6 @@ class TrackingRewardWrapper(gym.Wrapper):
 
             assert len(tracking_series[k].shape) == 2, f"Tracking series for {k} have shape {tracking_series[k].shape}"
 
-        # plot if enough points and update every 32 steps
-        min_series_length = min([len(s) for s in self.tracking_caches[k].series])
-        if len(paths[k]) > min_series_length * 0.8 and len(paths[k]) % 32 == 0:
-            save_dir = "tracking"
-            os.makedirs(save_dir, exist_ok=True)
-            # _plot_tracking_debug(img, paths, tracking_series, tracking_rewards, save_path=os.path.join(save_dir, f"{self._unique_id}.png"))
-            _plot_tracking_debug(img, paths, tracking_series, tracking_rewards, save_dir=save_dir, unique_id=self._unique_id)
 
         # compute reward
         reward = reward + self.reward_scale * np.mean(list(tracking_rewards.values()))
