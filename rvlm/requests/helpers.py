@@ -6,8 +6,9 @@ from rvlm.requests.gemini_utils import create_config, img_to_mime, call_gemini_r
 
 def get_obj_labels_prompt(task: str):
     prompt = textwrap.dedent("""\
-    List the object parts and (multiple) descriptors (e.g., top, bottom, handle, center, left, right, blue, green, transparent, ...) that are relevant to completing the task: {{TASK}}
-
+    List the object parts AND (multiple) descriptors (e.g., top, bottom, handle, center, left, right, blue, green, transparent, ...) that must move to complete the task: {{TASK}}
+    Only list minimal set and exclude unnecessary.
+    
     The answer should follow the JSON format:
     [{"label": <object_name>_<descriptors>}, ...]
     """)
@@ -17,7 +18,7 @@ def get_obj_labels_prompt(task: str):
 def get_obj_points_prompt(task: str, obj_labels: list[dict]):
  
     prompt = textwrap.dedent("""\
-    Point to the following object parts: {{LABELS}}
+    Point EXACTLY to the following object parts: {{LABELS}}
     All object parts exist in the image.
 
     The answer should follow the JSON format:
