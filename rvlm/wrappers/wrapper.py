@@ -264,6 +264,7 @@ class TrackingRewardWrapper(gym.Wrapper):
         reward_normalize: bool = True,
         reward_beta: float = 1e-2,
         reward_scale: float = 1.0,
+        reward_shaping: bool = False,
 
         resample_length: int = -1,
         use_path_img: bool = False,
@@ -304,7 +305,8 @@ class TrackingRewardWrapper(gym.Wrapper):
         self.reward_normalize = reward_normalize
         self.reward_beta = reward_beta
         self.reward_scale = reward_scale
-
+        self.reward_shaping = reward_shaping
+        
         # TODO implement language instruction as env variable
         self.task = "Put the hammer and the screwdriver in the toolbox" # TASK_TO_LANG[env_name]
 
@@ -439,6 +441,7 @@ class TrackingRewardWrapper(gym.Wrapper):
         # (optional) render paths for evaluation / visualization
         obs["agentview_path_image"] = img
         self.rewards = []
+        self.prev_tracking_reward = 0.0
 
         return obs, info
 
@@ -478,9 +481,15 @@ class TrackingRewardWrapper(gym.Wrapper):
             tracking_series[k] = self.tracking_caches[k].series[max_idx]
 
             assert len(tracking_series[k].shape) == 2, f"Tracking series for {k} have shape {tracking_series[k].shape}"
-            
+
         # compute reward
-        reward = reward + self.reward_scale * np.mean(list(tracking_rewards.values()))
+        if self.reward_shaping:
+            gamma = 0.99
+            curr_tracking_reward = np.mean(list(tracking_rewards.values()))
+            reward = reward + self.reward_scale * (gamma * curr_tracking_reward - self.prev_tracking_reward)
+            self.prev_tracking_reward = curr_tracking_reward
+        else:
+            reward = reward + self.reward_scale * np.mean(list(tracking_rewards.values()))
 
         if self.use_path_state:
             raise NotImplementedError("should use lowres image?")
