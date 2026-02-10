@@ -7,6 +7,7 @@ import numpy as np
 
 from google import genai
 from google.genai import types
+from google.genai.errors import ServerError
 
 try:
     gemini_robotics = True
@@ -58,17 +59,40 @@ def create_config(temperature=0.5, thinking_budget=0, include_thoughts=False):
         ),
     )
 
-def call_gemini_robotics_er(img, prompt, config=None):
+# def call_gemini_robotics_er(img, prompt, config=None):
+#     if config is None:
+#         config = create_config()
+
+#     image_response = client.models.generate_content(
+#         model=MODEL_ID,
+#         contents=[img, prompt],
+#         config=config,
+#     )
+#     return parse_json(image_response.text)
+
+def call_gemini_robotics_er(img, prompt, config=None, max_retries=5, initial_delay=2.0, max_delay=60.0):
     if config is None:
         config = create_config()
 
-    image_response = client.models.generate_content(
-        model=MODEL_ID,
-        contents=[img, prompt],
-        config=config,
-    )
-    return parse_json(image_response.text)
-
+    delay = initial_delay
+    last_exc = None
+    for attempt in range(max_retries):
+        try:
+            image_response = client.models.generate_content(
+                model=MODEL_ID,
+                contents=[img, prompt],
+                config=config,
+            )
+            return parse_json(image_response.text)
+        except ServerError as e:
+            last_exc = e
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(delay)
+            delay = min(delay * 2, max_delay)
+    if last_exc is not None:
+        raise last_exc
+        
 async def call_gemini_robotics_er_async(img, prompt, config=None):
     if config is None:
         config = create_config()

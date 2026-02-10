@@ -279,7 +279,7 @@ class TrackingRewardWrapper(gym.Wrapper):
         if dataset_path:
             from rvlm.buffers.kin_buffer import KinBuffer
             import h5py
-            with h5py.File(dataset_path, "r") as f:
+            with h5py.File(dataset_path, "r", swmr=True) as f:
                 for dk in f["data"].keys():
                     obj_labels = f["data"][dk].attrs["obj_labels"].tolist()
                     keys = list(f["data"][dk]["obs"].keys())
