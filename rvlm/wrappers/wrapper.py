@@ -266,9 +266,10 @@ class TrackingRewardWrapper(gym.Wrapper):
         reward_scale: float = 1.0,
         reward_shaping: bool = False,
 
-        resample_length: int = -1,
+        resample_length: int = 10, # -1,
         use_path_img: bool = False,
         use_path_state: bool = False,
+        use_path_fix: bool = False,
     ):
         super().__init__(env)
 
@@ -292,7 +293,7 @@ class TrackingRewardWrapper(gym.Wrapper):
             for k,v in path_buffer.get_dict().items():
                 self.path_buffer_dict[k.replace("path_", "")] = v
 
-        assert resample_length == -1, "Resampling breaks streaming DTW"
+        # assert resample_length == -1, "Resampling breaks streaming DTW" # --> it's only used for observation space!
 
 
         self.img_key = img_key
@@ -321,6 +322,7 @@ class TrackingRewardWrapper(gym.Wrapper):
 
         self.use_path_img = use_path_img
         self.use_path_state = use_path_state
+        self.use_path_fix = use_path_fix
 
         self.highres = (256, 256, 3)
         self._update_observation_space()
@@ -334,11 +336,11 @@ class TrackingRewardWrapper(gym.Wrapper):
             self.env.observation_space.spaces["path_state"] = gym.spaces.Box(
                 low=-1.0, high=1.0, shape=(path_state_dim,), dtype=np.float32
             )
-        # if self.use_path_img:
-        #     paths_img_dim = self.env.observation_space.spaces[self.img_key].shape
-        #     self.env.observation_space.spaces["paths_img"] = gym.spaces.Box(
-        #         low=0, high=255, shape=paths_img_dim, dtype=np.uint8
-        #     )
+        if self.use_path_img:
+            paths_img_dim = self.env.observation_space.spaces[self.img_key].shape
+            self.env.observation_space.spaces["paths_img"] = gym.spaces.Box(
+                low=0, high=255, shape=paths_img_dim, dtype=np.uint8
+            )
 
         self.env.observation_space.spaces["agentview_path_image"] = gym.spaces.Box(
                 low=0, high=255, shape=self.highres, dtype=np.uint8
@@ -389,6 +391,9 @@ class TrackingRewardWrapper(gym.Wrapper):
             # compute distances
             dists = [np.linalg.norm(curr_state - s) for s in init_states]
             idx = np.argmin(dists)
+            if self.use_path_fix:
+                idx = self.use_path_fix
+                print("fixing id to", idx)
 
             # update path cache
             for k in self.path_buffer_dict.keys():
@@ -432,7 +437,6 @@ class TrackingRewardWrapper(gym.Wrapper):
             self.tracking_caches[k].reset()
 
         if self.use_path_state:
-            raise NotImplementedError("should use lowres image?")
             obs["path_state"] = compute_path_state(img, {k:v[0] for k,v in self.path_cache.items()}, self.obj_labels, self.resample_length)
         if self.use_path_img:
             raise NotImplementedError("should use lowres image?")
@@ -492,7 +496,6 @@ class TrackingRewardWrapper(gym.Wrapper):
             reward = reward + self.reward_scale * np.mean(list(tracking_rewards.values()))
 
         if self.use_path_state:
-            raise NotImplementedError("should use lowres image?")
             obs["path_state"] = compute_path_state(img, {k:v[0] for k,v in self.path_cache.items()}, self.obj_labels, self.resample_length)
         if self.use_path_img:
             raise NotImplementedError("should use lowres image?")
