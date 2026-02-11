@@ -2,19 +2,6 @@ import numpy as np
 from numba import jit
 from .distance_base import StreamingDistanceBase
 
-# # @jit(nopython=True)
-def compute_cost_matrix(series: np.ndarray, query: np.ndarray, p: int = 2) -> np.ndarray:
-    """
-    Pairwise distances using numpy broadcasting
-    series: (N,D)
-    query: (M,D)
-    returns: cost matrix C: (N,M)
-    """
-    s = series.reshape(len(series), -1)     # (N, D)
-    q = query.reshape(len(query), -1)       # (M, D)
-    diff = s[:, None, :] - q[None, :, :]    # (N, M, D)
-    return np.power(np.sum(np.abs(diff) ** p, axis=2), 1.0 / p)
-    
 # @jit(nopython=True)
 # def compute_acc_cost_matrix(C: np.ndarray, R_cache: np.ndarray = None) -> np.ndarray:
 #     """
@@ -48,6 +35,21 @@ def compute_cost_matrix(series: np.ndarray, query: np.ndarray, p: int = 2) -> np
 #             # accumulated cost is prev acc cost + curr cost
 #             R[i, j] = C[i - 1, j - 1] + m
 #     return R
+
+
+# # @jit(nopython=True)
+def compute_cost_matrix(series: np.ndarray, query: np.ndarray, p: int = 2) -> np.ndarray:
+    """
+    Pairwise distances using numpy broadcasting
+    series: (N,D)
+    query: (M,D)
+    returns: cost matrix C: (N,M)
+    """
+    s = series.reshape(len(series), -1)     # (N, D)
+    q = query.reshape(len(query), -1)       # (M, D)
+    diff = s[:, None, :] - q[None, :, :]    # (N, M, D)
+    return np.power(np.sum(np.abs(diff) ** p, axis=2), 1.0 / p)
+    
 
 @jit(nopython=True)
 def compute_acc_cost_matrix(C, R_cache=None, alpha=0.5, beta=2.0):
@@ -151,3 +153,82 @@ class StreamingDTW(StreamingDistanceBase):
             costs = [float(c) / len(self.query) for c in costs]
 
         return np.array(costs)
+
+    def step_package(self, next_query: np.ndarray):
+        """
+        Streaming mode using dtw package instead of custom cost matrix computation.
+        Uses the same parameters as the notebook: asymmetric step pattern, open begin/end.
+        
+        Args:
+            next_query: numpy array (N, D) - next frame(s) to append to query
+        
+        Returns:
+            numpy array (M,) - normalized DTW distances for each series
+        """
+        from dtw import dtw
+        
+        assert len(next_query.shape) == 2, "next_query must be 2D array (N, D)"
+        
+        # Update query: append new frames to cached query
+        if self.query is None:
+            self.query = next_query
+        else:
+            self.query = np.concatenate((self.query, next_query), axis=0)
+        
+        # Compute DTW for each series using the dtw package
+        costs = []
+        for series in self.series:
+            alignment = dtw(
+                x=series,              # reference trajectory
+                y=self.query,          # query trajectory (growing)
+                step_pattern='asymmetric',
+                open_begin=True,
+                open_end=True,
+                keep_internals=True
+            )
+            
+            # Use normalized distance (equivalent to notebook usage)
+            distance = alignment.normalizedDistance
+            costs.append(distance)
+        
+        return np.array(costs)
+
+    def forward(self, query: np.ndarray):
+        """
+        Non-streaming version: computes DTW costs for entire trajectory at once.
+        Returns costs for each timestep of the query trajectory.
+        
+        query: numpy array (T, D) - entire trajectory
+        returns: numpy array (M, T) - costs for each series at each timestep
+        """
+        assert len(query.shape) == 2, "Query must be 2D array (T, D)"
+        
+        T = len(query)
+        M = len(self.series)
+        all_costs = np.zeros((M, T), dtype=np.float32)
+        
+        for t in range(T):
+            # Get query up to current timestep
+            query_t = query[:t+1]
+            
+            # Compute cost matrix for each series
+            Cs = [compute_cost_matrix(s.astype(np.float32), query_t.astype(np.float32)) for s in self.series]
+            
+            # Compute accumulated cost matrix
+            Rs = [compute_acc_cost_matrix(c, alpha=self.alpha, beta=self.beta) for c in Cs]
+            
+            # Extract costs based on flexible_end setting
+            if self.flexible_end:
+                # Open-end DTW: minimum cost across all series endpoints
+                costs_t = [np.min(r[1:, -1]) for r in Rs]
+            else:
+                # Fixed-end DTW: cost at final alignment
+                costs_t = [r[-1, -1] for r in Rs]
+            
+            # Normalize if requested
+            if self.normalize_cost:
+                costs_t = [float(c) / (t + 1) for c in costs_t]
+            
+            all_costs[:, t] = costs_t
+        
+        return all_costs

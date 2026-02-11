@@ -469,7 +469,7 @@ class TrackingRewardWrapper(gym.Wrapper):
             assert len(paths[k].shape) == 2, f"Paths for {k} have shape {paths[k].shape}"
 
             # TODO: if len(paths) > len(series), resample for DTW?
-            dists = self.tracking_caches[k].step(paths[k][-1:])
+            dists = self.tracking_caches[k].step_package(paths[k][-1:])
             dists = np.array(dists)
             
             assert len(dists) == 1, f"Dists for {k} have shape {dists.shape}"
