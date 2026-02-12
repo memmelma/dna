@@ -154,7 +154,7 @@ class TrackingRewardWrapper(gym.Wrapper):
     ):
         super().__init__(env)
 
-        self.evaluate = env.unwrapped.evaluate
+        self.evaluate = evaluate
         self.first_reset = True
 
         # load paths in highres image resolution
@@ -299,7 +299,7 @@ class TrackingRewardWrapper(gym.Wrapper):
         # rerender at higher resolution for better tracking
         img = self.env.unwrapped.sim.render(camera_name=self.img_key.split("_")[0], height=self.highres[0], width=self.highres[1])[::-1].copy()
 
-        if self.first_reset or not self.evaluate:
+        if self.first_reset:
             # query VLM for points (every time) -> works decent w/o reasoning
             obj_points = get_obj_points_from_labels(self.task, img, self.obj_labels, temperature=0.2, thinking_budget=0)
 
