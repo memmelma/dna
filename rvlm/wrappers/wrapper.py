@@ -331,6 +331,7 @@ class TrackingRewardWrapper(gym.Wrapper):
             obs["agentview_debug_image"] = np.concatenate([img]*4, axis=1)
         self.rewards = []
         self.tracking_rewards = []
+        self.baselines_distance = {}
         self.prev_tracking_reward = 0.0
 
         return obs, info
@@ -351,6 +352,7 @@ class TrackingRewardWrapper(gym.Wrapper):
         tracking_rewards = {}
         tracking_series = {}
         alignments = {}
+
         for k in self.obj_labels:
 
             assert len(paths[k].shape) == 2, f"Paths for {k} have shape {paths[k].shape}"
@@ -362,10 +364,14 @@ class TrackingRewardWrapper(gym.Wrapper):
                 dists, alignment = self.tracking_caches[k].step_package(paths[k][-1:])
             alignments[k] = alignment
             dists = np.array(dists)
-            
+
+            if self.baselines_distance.get(k) is None:
+                self.baselines_distance[k] = dists
+            dists = dists / self.baselines_distance[k]
+
             assert len(dists) == 1, f"Dists for {k} have shape {dists.shape}"
 
-            rewards = np.exp(-self.reward_beta * dists)
+            rewards = 1 - dists # np.exp(-self.reward_beta * dists)
             # print("mean dists", np.around(np.mean(dists), 3), "mean rewards", np.around(np.mean(rewards), 3))
             
             # max_idx = np.argmax(rewards)
@@ -389,13 +395,13 @@ class TrackingRewardWrapper(gym.Wrapper):
         else:
 
             # current tracking reward minus initial tracking reward (baseline)
-            normalized_tracking_reward = np.mean(list(tracking_rewards.values())) - np.mean(list(self.tracking_rewards[0].values()))
+            # normalized_tracking_reward = np.mean(list(tracking_rewards.values())) - np.mean(list(self.tracking_rewards[0].values()))
             
             # print("curr", np.mean(list(tracking_rewards.values())))
             # print("init", np.mean(list(self.tracking_rewards[0].values())))
             # print("normalized", normalized_tracking_reward)
             
-            reward = reward + self.reward_scale * normalized_tracking_reward
+            reward = reward + self.reward_scale * np.mean(list(tracking_rewards.values())) # normalized_tracking_reward
 
         # render paths for evaluation / visualization
         self.rewards.append(reward)
