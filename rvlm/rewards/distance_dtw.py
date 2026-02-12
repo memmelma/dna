@@ -191,7 +191,7 @@ class StreamingDTW(StreamingDistanceBase):
             distance = alignment.normalizedDistance
             costs.append(distance)
         
-        return np.array(costs)
+        return np.array(costs), alignment
 
     def forward(self, query: np.ndarray):
         """

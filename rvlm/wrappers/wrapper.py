@@ -21,6 +21,8 @@ from rvlm.requests.prompts import get_alternative_pointing_prompt
 from rvlm.requests.gemini_utils import img_to_mime, create_config, call_gemini_robotics_er
 from rvlm.requests.helpers import get_obj_points_from_labels, postprocess_obj_paths
 
+from rvlm.utils.visualize import plot_costs, plot_alignment, plot_tracking_debug
+
 from tool_use.envs.utils import COLORS
 
 from scipy.interpolate import interp1d
@@ -105,129 +107,6 @@ def compute_path_img(img, series, obj_labels, resample_length=-1, line_style="so
         plt.imsave(save, tmp_img)
     
     return tmp_img
-
-def _plot_tracking_debug(img, paths, tracking_series, tracking_rewards, rewards=None, save_dir=None, unique_id=None, colors=None):
-    """
-    Plot all tracked paths against reference series on a single image.
-    
-    Args:
-        img: The current image frame (H, W, C)
-        paths: Dict of tracked paths from cotracker {label: (T, 2)}
-        tracking_series: Dict of best-matching reference series {label: (T, 2)}
-        tracking_rewards: Dict of rewards per object {label: float}
-        rewards: Optional list of rewards to display
-        save_dir: Optional directory to save the plot
-        unique_id: Optional unique identifier for the saved file
-    
-    Returns:
-        numpy.ndarray: RGB image array with same shape as input img (H, W, 3) with dtype uint8
-    """
-    import matplotlib.pyplot as plt
-    import io
-    from PIL import Image
-    
-    # Get input image dimensions
-    img_height, img_width = img.shape[:2]
-    
-    # Calculate figure size to match input image dimensions
-    # DPI is set to 100, so figsize in inches = pixels / dpi
-    dpi = 100
-    fig_width = img_width / dpi
-    fig_height = img_height / dpi
-    
-    # Create single figure with exact size
-    fig, ax = plt.subplots(1, 1, figsize=(fig_width, fig_height), dpi=dpi)
-    
-    # Show image background
-    ax.imshow(img)
-    
-    # Define colors for different objects
-    colors = plt.cm.tab10(np.linspace(0, 1, len(paths))) if colors is None else colors
-    
-    # Plot all tracks on the same image
-    for idx, (k, color) in enumerate(zip(paths.keys(), colors)):
-        # Plot tracked path (from cotracker)
-        tracked = paths[k].astype(int)
-        ax.plot(tracked[:, 0], tracked[:, 1], 
-                color=color, linewidth=2, label=f'{k} (tracked)', alpha=0.8)
-        
-        # Plot reference series (best match)
-        ref = tracking_series[k].astype(int)
-        ax.plot(ref[:, 0], ref[:, 1], 
-                color=color, linewidth=2, linestyle="--", 
-                label=f'{k} (ref, R={tracking_rewards[k]:.3f})', alpha=0.8)
-        
-        # Mark start points
-        ax.scatter(tracked[0, 0], tracked[0, 1], 
-                  c=[color], marker='o', s=10, 
-                  linewidth=2, zorder=5)
-        ax.scatter(ref[0, 0], ref[0, 1], 
-                  c=[color], marker='x', s=10, linewidth=2, zorder=5)
-    
-    # Add legend inside the image (top-right corner)
-    # ax.legend(loc='upper right', fontsize=8, framealpha=0.7, 
-    #          edgecolor='white', fancybox=True)
-    
-    # Add reward text inside the image (top-left corner)
-    if rewards is not None:
-        ax.text(0.02, 0.98, f"R: {rewards[-1]:.2f}", 
-               transform=ax.transAxes, fontsize=5, 
-               color='red', weight='bold',
-               verticalalignment='top',
-               bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
-        ax.text(0.02, 0.94, f"R mean: {np.mean(rewards):.2f}", 
-               transform=ax.transAxes, fontsize=5, 
-               color='green', weight='bold',
-               verticalalignment='top',
-               bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
-    
-    # Add tracking rewards summary (below total reward)
-    tracking_rewards_str = json.dumps({k: np.around(np.mean(v) if isinstance(v, (list, np.ndarray)) else v, 3) 
-                                      for k, v in tracking_rewards.items()})
-    ax.text(0.02, 0.90, f"R track: {tracking_rewards_str}", 
-           transform=ax.transAxes, fontsize=5, 
-           color='blue', weight='bold',
-           verticalalignment='top',
-           bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
-    
-    # Remove axis ticks and labels
-    ax.axis('off')
-    
-    # Remove all padding and margins to match exact input size
-    plt.subplots_adjust(left=0, right=1, top=1, bottom=0, wspace=0, hspace=0)
-    ax.set_xlim(0, img_width)
-    ax.set_ylim(img_height, 0)  # Invert y-axis to match image coordinates
-    
-    # Save to file if requested
-    if save_dir is not None and unique_id is not None:
-        import os
-        save_path = os.path.join(save_dir, f'tracking_debug_{unique_id}.png')
-        plt.savefig(save_path, dpi=dpi, bbox_inches='tight', pad_inches=0)
-    
-    # Render to buffer and convert to numpy array
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=dpi, bbox_inches='tight', pad_inches=0)
-    buf.seek(0)
-    
-    # Convert buffer to numpy array
-    pil_img = Image.open(buf)
-    img_array = np.array(pil_img)
-    
-    # Close buffer and figure
-    buf.close()
-    plt.close(fig)
-    
-    # Ensure RGB format (remove alpha channel if present)
-    if img_array.shape[-1] == 4:
-        img_array = img_array[..., :3]
-    
-    # Resize to exact input dimensions if needed (bbox_inches='tight' might change size slightly)
-    if img_array.shape[:2] != (img_height, img_width):
-        pil_resize = Image.fromarray(img_array)
-        pil_resize = pil_resize.resize((img_width, img_height), Image.LANCZOS)
-        img_array = np.array(pil_resize)
-    
-    return img_array
 
 class TrackingRewardWrapper(gym.Wrapper):
     """
@@ -342,8 +221,8 @@ class TrackingRewardWrapper(gym.Wrapper):
                 low=0, high=255, shape=paths_img_dim, dtype=np.uint8
             )
 
-        self.env.observation_space.spaces["agentview_path_image"] = gym.spaces.Box(
-                low=0, high=255, shape=self.highres, dtype=np.uint8
+        self.env.observation_space.spaces["agentview_debug_image"] = gym.spaces.Box(
+                low=0, high=255, shape=(256, 256*4, 3), dtype=np.uint8 # 4 images in a row  
             )
 
     def reset_tracking(self):
@@ -443,8 +322,9 @@ class TrackingRewardWrapper(gym.Wrapper):
             obs[self.img_key] = compute_path_img(img, {k:v[0] for k,v in self.path_cache.items()}, self.obj_labels, self.resample_length, save=f"path_img_{self._unique_id}.png")
         
         # (optional) render paths for evaluation / visualization
-        obs["agentview_path_image"] = img
+        obs["agentview_debug_image"] = np.concatenate([img]*4, axis=1)
         self.rewards = []
+        self.tracking_rewards = []
         self.prev_tracking_reward = 0.0
 
         return obs, info
@@ -464,15 +344,17 @@ class TrackingRewardWrapper(gym.Wrapper):
         # compute distance
         tracking_rewards = {}
         tracking_series = {}
+        alignments = {}
         for k in self.obj_labels:
 
             assert len(paths[k].shape) == 2, f"Paths for {k} have shape {paths[k].shape}"
 
             if paths[k][-1:].shape[0] == 1:
                 # dtw requires at least 2 points
-                dists = self.tracking_caches[k].step_package(np.repeat(paths[k][-1:], 2, axis=0))
+                dists, alignment = self.tracking_caches[k].step_package(np.repeat(paths[k][-1:], 2, axis=0))
             else:
-                dists = self.tracking_caches[k].step_package(paths[k][-1:])
+                dists, alignment = self.tracking_caches[k].step_package(paths[k][-1:])
+            alignments[k] = alignment
             dists = np.array(dists)
             
             assert len(dists) == 1, f"Dists for {k} have shape {dists.shape}"
@@ -489,6 +371,9 @@ class TrackingRewardWrapper(gym.Wrapper):
 
             assert len(tracking_series[k].shape) == 2, f"Tracking series for {k} have shape {tracking_series[k].shape}"
 
+        # render paths for evaluation / visualization
+        self.tracking_rewards.append(tracking_rewards)
+
         # compute reward
         if self.reward_shaping:
             gamma = 0.99
@@ -496,7 +381,18 @@ class TrackingRewardWrapper(gym.Wrapper):
             reward = reward + self.reward_scale * (gamma * curr_tracking_reward - self.prev_tracking_reward)
             self.prev_tracking_reward = curr_tracking_reward
         else:
-            reward = reward + self.reward_scale * np.mean(list(tracking_rewards.values()))
+
+            # current tracking reward minus initial tracking reward (baseline)
+            normalized_tracking_reward = np.mean(list(tracking_rewards.values())) - np.mean(list(self.tracking_rewards[0].values()))
+            
+            # print("curr", np.mean(list(tracking_rewards.values())))
+            # print("init", np.mean(list(self.tracking_rewards[0].values())))
+            # print("normalized", normalized_tracking_reward)
+            
+            reward = reward + self.reward_scale * normalized_tracking_reward
+
+        # render paths for evaluation / visualization
+        self.rewards.append(reward)
 
         if self.use_path_state:
             obs["path_state"] = compute_path_state(img, {k:v[0] for k,v in self.path_cache.items()}, self.obj_labels, self.resample_length)
@@ -504,10 +400,8 @@ class TrackingRewardWrapper(gym.Wrapper):
             raise NotImplementedError("should use lowres image?")
             obs[self.img_key] = compute_path_img(img, {k:v[0] for k,v in self.path_cache.items()}, self.obj_labels, self.resample_length)
 
-
-        # render paths for evaluation / visualization
-        self.rewards.append(reward)
-        debug_img = _plot_tracking_debug(
+        debug_imgs = []
+        debug_img = plot_tracking_debug(
             img=img,
             paths=paths,
             tracking_series=tracking_series,
@@ -517,7 +411,18 @@ class TrackingRewardWrapper(gym.Wrapper):
             save_dir=None,
             unique_id=self._unique_id
         )
-        obs["agentview_path_image"] = debug_img
+        debug_imgs.append(debug_img)
+
+        for k in self.obj_labels:
+            alignment = alignments[k]
+            debug_img = plot_alignment(alignment)
+            debug_imgs.append(debug_img)
+
+        debug_img = plot_costs(self.tracking_rewards)
+        debug_imgs.append(debug_img)
+
+        # organize 4 images in debug_imgs into 2x2 grid
+        obs["agentview_debug_image"] = np.concatenate(debug_imgs, axis=1)
 
         # Add tracking_rewards to info for logging
         if info is None:
