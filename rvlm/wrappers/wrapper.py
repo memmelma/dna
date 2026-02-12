@@ -149,6 +149,8 @@ class TrackingRewardWrapper(gym.Wrapper):
         use_path_img: bool = False,
         use_path_state: bool = False,
         use_path_fix: bool = False,
+
+        evaluate: bool = False,
     ):
         super().__init__(env)
 
@@ -206,6 +208,8 @@ class TrackingRewardWrapper(gym.Wrapper):
         self.highres = (256, 256, 3)
         self._update_observation_space()
 
+        self.evaluate = evaluate
+
     def _update_observation_space(self):
         """
         Update the observation space to include path obs for each label (separate state tags?)
@@ -221,9 +225,10 @@ class TrackingRewardWrapper(gym.Wrapper):
                 low=0, high=255, shape=paths_img_dim, dtype=np.uint8
             )
 
-        self.env.observation_space.spaces["agentview_debug_image"] = gym.spaces.Box(
-                low=0, high=255, shape=(256, 256*4, 3), dtype=np.uint8 # 4 images in a row  
-            )
+        if self.evaluate:
+            self.env.observation_space.spaces["agentview_debug_image"] = gym.spaces.Box(
+                    low=0, high=255, shape=(256, 256*4, 3), dtype=np.uint8 # 4 images in a row  
+                )
 
     def reset_tracking(self):
 
@@ -322,7 +327,8 @@ class TrackingRewardWrapper(gym.Wrapper):
             obs[self.img_key] = compute_path_img(img, {k:v[0] for k,v in self.path_cache.items()}, self.obj_labels, self.resample_length, save=f"path_img_{self._unique_id}.png")
         
         # (optional) render paths for evaluation / visualization
-        obs["agentview_debug_image"] = np.concatenate([img]*4, axis=1)
+        if self.evaluate:
+            obs["agentview_debug_image"] = np.concatenate([img]*4, axis=1)
         self.rewards = []
         self.tracking_rewards = []
         self.prev_tracking_reward = 0.0
@@ -400,29 +406,30 @@ class TrackingRewardWrapper(gym.Wrapper):
             raise NotImplementedError("should use lowres image?")
             obs[self.img_key] = compute_path_img(img, {k:v[0] for k,v in self.path_cache.items()}, self.obj_labels, self.resample_length)
 
-        debug_imgs = []
-        debug_img = plot_tracking_debug(
-            img=img,
-            paths=paths,
-            tracking_series=tracking_series,
-            tracking_rewards=tracking_rewards,
-            rewards=self.rewards,
-            colors=COLORS,
-            save_dir=None,
-            unique_id=self._unique_id
-        )
-        debug_imgs.append(debug_img)
-
-        for k in self.obj_labels:
-            alignment = alignments[k]
-            debug_img = plot_alignment(alignment)
+        if self.evaluate:
+            debug_imgs = []
+            debug_img = plot_tracking_debug(
+                img=img,
+                paths=paths,
+                tracking_series=tracking_series,
+                tracking_rewards=tracking_rewards,
+                rewards=self.rewards,
+                colors=COLORS,
+                save_dir=None,
+                unique_id=self._unique_id
+            )
             debug_imgs.append(debug_img)
 
-        debug_img = plot_costs(self.tracking_rewards)
-        debug_imgs.append(debug_img)
+            for k in self.obj_labels:
+                alignment = alignments[k]
+                debug_img = plot_alignment(alignment)
+                debug_imgs.append(debug_img)
 
-        # organize 4 images in debug_imgs into 2x2 grid
-        obs["agentview_debug_image"] = np.concatenate(debug_imgs, axis=1)
+            debug_img = plot_costs(self.tracking_rewards)
+            debug_imgs.append(debug_img)
+
+            # organize 4 images in debug_imgs into 2x2 grid
+            obs["agentview_debug_image"] = np.concatenate(debug_imgs, axis=1)
 
         # Add tracking_rewards to info for logging
         if info is None:
