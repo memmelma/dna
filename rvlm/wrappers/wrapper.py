@@ -299,19 +299,16 @@ class TrackingRewardWrapper(gym.Wrapper):
         # rerender at higher resolution for better tracking
         img = self.env.unwrapped.sim.render(camera_name=self.img_key.split("_")[0], height=self.highres[0], width=self.highres[1])[::-1].copy()
 
-        if self.first_reset:
-            # query VLM for points (every time) -> works decent w/o reasoning
-            obj_points = get_obj_points_from_labels(self.task, img, self.obj_labels, temperature=0.2, thinking_budget=0)
+        # query VLM for points (every time) -> works decent w/o reasoning
+        obj_points = get_obj_points_from_labels(self.task, img, self.obj_labels, temperature=0.2, thinking_budget=0)
 
-            # convert gemini format to dict
-            H, W = img.shape[:2]
-            self.obj_points_processed = postprocess_obj_paths(obj_points, H, W)
+        # convert gemini format to dict
+        H, W = img.shape[:2]
+        self.obj_points_processed = postprocess_obj_paths(obj_points, H, W)
 
-            # EXPERIMENTAL
-            self.init_closests_path(self.obj_points_processed)
-            self.reset_tracking()
-
-            self.first_reset = False
+        # EXPERIMENTAL
+        self.init_closests_path(self.obj_points_processed)
+        self.reset_tracking()
 
         # reset cotracker
         self.cotracker.reset(self.obj_points_processed)
