@@ -300,7 +300,7 @@ class TrackingRewardWrapper(gym.Wrapper):
         img = self.env.unwrapped.sim.render(camera_name=self.img_key.split("_")[0], height=self.highres[0], width=self.highres[1])[::-1].copy()
 
         # query VLM for points (every time) -> works decent w/o reasoning
-        obj_points = get_obj_points_from_labels(self.task, img, self.obj_labels, temperature=0.2, thinking_budget=0)
+        obj_points = get_obj_points_from_labels(self.task, img, self.obj_labels, temperature=0.0, thinking_budget=0)
 
         # convert gemini format to dict
         H, W = img.shape[:2]
