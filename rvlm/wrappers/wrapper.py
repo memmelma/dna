@@ -227,7 +227,7 @@ class TrackingRewardWrapper(gym.Wrapper):
 
         if self.evaluate:
             self.env.observation_space.spaces["agentview_debug_image"] = gym.spaces.Box(
-                    low=0, high=255, shape=(256, 256*4, 3), dtype=np.uint8 # 4 images in a row  
+                    low=0, high=255, shape=(256, 256*(2 + len(self.obj_labels)), 3), dtype=np.uint8 # 4 images in a row  
                 )
 
     def reset_tracking(self):
@@ -325,7 +325,7 @@ class TrackingRewardWrapper(gym.Wrapper):
         
         # (optional) render paths for evaluation / visualization
         if self.evaluate:
-            obs["agentview_debug_image"] = np.concatenate([img]*4, axis=1)
+            obs["agentview_debug_image"] = np.concatenate([img]*(2 + len(self.obj_labels)), axis=1)
         self.rewards = []
         self.tracking_rewards = []
         self.baselines_distance = {}

@@ -7,7 +7,7 @@ from rvlm.requests.gemini_utils import create_config, img_to_mime, call_gemini_r
 def get_obj_labels_prompt(task: str):
     prompt = textwrap.dedent("""\
     List the object parts AND (multiple) descriptors (e.g., top, bottom, handle, center, left, right, blue, green, transparent, ...) that must move to complete the task: {{TASK}}
-    Only list minimal set and exclude unnecessary.
+    Only list minimal set and exclude unnecessary. Include the robot's gripper.
     
     The answer should follow the JSON format:
     [{"label": <object_name>_<descriptors>}, ...]
@@ -42,10 +42,10 @@ def get_obj_paths_prompt(task: str, points: list[dict], n_points: int):
         point at left hand) to <n> (final point).
 
         Smooth example motion:
-        [{"label": <object_name>_<label_0>, "points": [[185 104], [84, 74], [46, 54], [34, 30], [26, 51]]}]
+        [{"label": <object_label>, "points": [[185 104], [84, 74], [46, 54], [34, 30], [26, 51]]}]
 
         The answer should follow the JSON format:
-        [{"label": <object_name>_<label_0>, "points": [<point_0>, <point_1>, ...]}, ...]
+        [{"label": <object_label>, "points": [<point_0>, <point_1>, ...]}, ...]
 
         The points are in [y, x] format normalized to 0-1000.""")
 

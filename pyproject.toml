@@ -5,7 +5,7 @@ description = "Vision-Language Model based reward functions"
 requires-python = ">=3.10"
 dependencies = [
     "google-genai",
-    "iisignature",
+    #"iisignature",
 ]
 
 [build-system]
@@ -18,5 +18,5 @@ packages = ["rvlm"]
 [tool.hatch.metadata]
 allow-direct-references = true
 
-[tool.uv.extra-build-dependencies]
-iisignature = ["numpy"]
+# [tool.uv.extra-build-dependencies]
+# iisignature = ["numpy"]
