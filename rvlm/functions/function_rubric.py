@@ -31,52 +31,69 @@ def _parse_json(text):
 
 async def get_a(video):
     prompt = textwrap.dedent("""\
-        Describe the scene in great detail.
+        Describe the scene in great detail. List the objects AND (multiple) descriptors (e.g., top, bottom, handle, center, left, right, blue, green, transparent, ...). Keep it concise (250 words).
     """)
     res = await asyncio.gather(*[call_gemini(prompt, img_input=img, thinking_level="LOW") for img in video])
     text_summary = {}
     for i, res in enumerate(res):
-        text_summary[i] = res.text
+        text_summary[i+1] = res.text
+        print(f"[{i+1}] DESCRIPTION\n", res.text)
     text_summary = json.dumps(text_summary)
-    # print("\nDESCRIPTION\n", text_summary)
+    
+    return text_summary
 
-    prompt = textwrap.dedent("""\
-        Think step by step and logically.
+# async def get_b(language_instruction, video):
+#     prompt = textwrap.dedent("""\
+#         Point at all objects in the scene.
+#     """)
+#     res = await call_gemini(prompt, img_input=video[0], thinking_level="LOW")
+#     objects = res.text
 
-        You're given a temporal scene description in the following form:
-        {"<timestep>": <description>, ...}
+#     prompt = textwrap.dedent("""\
 
-        Description:
-        {DESCRIPTION}
+#         1. List the objects AND (multiple) descriptors (e.g., top, bottom, handle, center, left, right, blue, green, transparent, ...) that must move to complete the task. Only list minimal set and exclude unnecessary. Ground the listed objects in the image.
+#         2. Provide granular list of relevant sub-tasks the robot must complete to solve the following task: "{{TASK}}"
+#         3. Don't include free-space motions like "moving" or "reaching".
 
-        Describe what happened. Ensure your description is temporally consistent and logical, e.g., when two entities attach (e.g., an object gets grasped), it moves with the grasping entity. Some descriptions might be wrong, average or smooth out incorrect descriptions over multiple timesteps.
-    """)
-    prompt = prompt.replace("{DESCRIPTION}", text_summary)
+#         Your answer should conclude with the following JSON format:
+#         ```json
+#         [{"sub_task_1": str}, {"sub_task_2": str}, ...]
+#         ```
+#     """)
 
-    res = await call_gemini(prompt, thinking_level="MEDIUM")
-    # print("\nSUMMARY\n", res.text)
+#     prompt = prompt.replace("{{TASK}}", language_instruction)
 
-    return res.text
+#     # call gemini
+#     res = await call_gemini(prompt, img_input=video[0], thinking_level="LOW")
+#     print("\nSUB-TASKS\n", res.text)
+
+#     json_str = re.search(r"```json(.*)```", res.text, re.DOTALL).group(1)
+#     json_obj = json.loads(json_str)
+
+#     return json_obj
 
 async def get_b(language_instruction, video):
     prompt = textwrap.dedent("""\
 
         Task: "{{TASK}}"
+
         1. List the objects AND (multiple) descriptors (e.g., top, bottom, handle, center, left, right, blue, green, transparent, ...) that must move to complete the task. Only list minimal set and exclude unnecessary. Ground the listed objects in the image.
-        2. Provide list of relevant sub-tasks the robot must complete to solve the task. Ground the subtasks in the listed objects.
+        2. Provide granular list of relevant sub-tasks the robot must complete to solve the following task.
         3. Don't include free-space motions like "moving" or "reaching".
 
         Your answer should conclude with the following JSON format:
         ```json
         [{"sub_task_1": str}, {"sub_task_2": str}, ...]
         ```
+
+        If the task cannot completed within the scene due to missing objects, return an empty list.
     """)
 
     prompt = prompt.replace("{{TASK}}", language_instruction)
 
     # call gemini
-    res = await call_gemini(prompt, img_input=video[0], thinking_level="MEDIUM")
-    # print("\nSUB-TASKS\n", res.text)
+    res = await call_gemini(prompt, img_input=video[0], thinking_level="LOW")
+    print("\nSUB-TASKS\n", res.text)
 
     json_str = re.search(r"```json(.*)```", res.text, re.DOTALL).group(1)
     json_obj = json.loads(json_str)
@@ -92,29 +109,30 @@ async def get_c(a, b):
         and temporal scene description of what happened:
         "{{B}}"
 
-        provide success/failure and timestamps (-1 for failures) for each of the sub-tasks in the following JSON format:
+        provide success/failure and precise timestamps (-1 for failures) for each of the sub-tasks in the following JSON format:
         ```json
         [{"sub_task_1": str, "success": bool, "time": int}, {"sub_task_2": str, "success": bool, "time": int}, ...]
         ```
+
+        Some descriptions might be wrong, average or smooth out incorrect descriptions over multiple timesteps!
     """)
 
     prompt = prompt.replace("{{A}}", a)
     prompt = prompt.replace("{{B}}", b)
 
     # call gemini
-    res = await call_gemini(prompt, thinking_level="HIGH")
+    res = await call_gemini(prompt, thinking_level="MEDIUM")
     # print("\nCHECKLIST\n", res.text)
 
     return res.text
-
-    # json_str = re.search(r"```json(.*)```", res.text, re.DOTALL).group(1)
-    # json_obj = json.loads(json_str)
-
-    # return json_obj
     
 async def compute_language_based_subtasks(language_instruction, video):
     # a = await get_a(video)
     # b = await get_b(language_instruction)
+
+    if language_instruction in _subtask_cache and len(_subtask_cache[language_instruction]) == 0:
+        return []
+        
     start_time = time.time()
     if language_instruction not in _subtask_cache:
         a, b = await asyncio.gather(get_a(video), get_b(language_instruction, video))
@@ -122,6 +140,10 @@ async def compute_language_based_subtasks(language_instruction, video):
     else:
         a = await get_a(video)
     b = _subtask_cache[language_instruction]
+    
+    if language_instruction in _subtask_cache and len(_subtask_cache[language_instruction]) == 0:
+        return []
+
     # a, b = await asyncio.gather(get_a(video), get_b(language_instruction, video))
     c = await get_c(_parse_json(b), a)
     end_time = time.time()
