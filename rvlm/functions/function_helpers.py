@@ -93,7 +93,7 @@ def _parse_json(text):
     except json.JSONDecodeError as e:
         raise ValueError(f"Could not parse Gemini response as JSON: {e}\nRaw text:\n{repr(text)}")
 
-async def call_gemini(prompt, video_input=None, img_input=None, thinking_level="MEDIUM"):
+async def call_gemini(prompt, video_input=None, img_input=None, thinking_level="MEDIUM", model_id: str = "gemini-3-flash-preview"):
     """
     Calls Gemini with a video, an image, and a text prompt.
     
@@ -101,8 +101,8 @@ async def call_gemini(prompt, video_input=None, img_input=None, thinking_level="
         video_input: Path to .mp4 file OR base64/bytes data
         img_input: Path to .jpg/.png file OR base64/bytes data
         prompt: String text
+        model_id: Gemini model ID
     """
-    model_id = "gemini-3-flash-preview"
 
     parts = []
 

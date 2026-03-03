@@ -42,7 +42,7 @@ async def _fix_json(input: str) -> str:
     return res.text
 
 # 1. image -> labels + points
-async def get_labels_and_points(image: np.ndarray) -> str:
+async def get_labels_and_points(image: np.ndarray, model_id: str = "gemini-3-flash-preview") -> str:
     prompt = textwrap.dedent("""\
         1. Describe the scene in great detail. Keep it concise (250 words).
         
@@ -54,11 +54,11 @@ async def get_labels_and_points(image: np.ndarray) -> str:
         The points are in [y, x] format normalized to 0-1000.
     """)
 
-    res = await call_gemini(prompt, img_input=image, thinking_level="LOW")
+    res = await call_gemini(prompt, img_input=image, thinking_level="LOW", model_id=model_id)
     return res.text
 
 # 2. labels + image -> scene description + points]
-async def get_descriptions_and_points(video: np.ndarray, labels: list[str]) -> list[str]:
+async def get_descriptions_and_points(video: np.ndarray, labels: list[str], model_id: str = "gemini-3-flash-preview") -> list[str]:
     prompt = textwrap.dedent("""\
         1. Describe the scene in great detail. Keep it concise (250 words).
         
@@ -70,12 +70,12 @@ async def get_descriptions_and_points(video: np.ndarray, labels: list[str]) -> l
     """)
     prompt = prompt.replace("{labels}", str(labels))
 
-    res = await asyncio.gather(*[call_gemini(prompt, img_input=img, thinking_level="LOW") for img in video])
+    res = await asyncio.gather(*[call_gemini(prompt, img_input=img, thinking_level="LOW", model_id=model_id) for img in video])
     
     return [r.text for r in res]
 
 # 2. labels + task -> subtasks + target points + constraints
-async def get_subtasks(image: np.ndarray, task: str, labels: list[str]) -> str:
+async def get_subtasks(image: np.ndarray, task: str, labels: list[str], model_id: str = "gemini-3-flash-preview") -> str:
     prompt = textwrap.dedent("""\
 
         Task: "{task}"
@@ -101,11 +101,11 @@ async def get_subtasks(image: np.ndarray, task: str, labels: list[str]) -> str:
     prompt = prompt.replace("{task}", task)
     prompt = prompt.replace("{labels}", str(labels))
 
-    res = await call_gemini(prompt, img_input=image, thinking_level="MEDIUM")
+    res = await call_gemini(prompt, img_input=image, thinking_level="MEDIUM", model_id=model_id)
     return res.text
 
 # 3. subtasks + scene description(s) -> verification
-async def get_verification(subtasks: list[str], scene_descriptions: list[str]) -> str:
+async def get_verification(subtasks: list[str], scene_descriptions: list[str], model_id: str = "gemini-3-flash-preview") -> str:
     prompt = textwrap.dedent("""\
 
         Given the list of sub-tasks:
@@ -124,13 +124,13 @@ async def get_verification(subtasks: list[str], scene_descriptions: list[str]) -
     prompt = prompt.replace("{subtasks}", str(subtasks))
     prompt = prompt.replace("{scene_descriptions}", str(scene_descriptions))
 
-    res = await call_gemini(prompt, thinking_level="MEDIUM")
+    res = await call_gemini(prompt, thinking_level="MEDIUM", model_id=model_id)
     return res.text
 
-async def compute_rewards(language_instruction: str, video: np.ndarray) -> tuple[list[float], list[float]]:
+async def compute_rewards(language_instruction: str, video: np.ndarray, model_id: str = "gemini-3-flash-preview") -> tuple[list[float], list[float]]:
     
     # 1. image -> labels + points
-    result = await get_labels_and_points(video[0])
+    result = await get_labels_and_points(video[0], model_id=model_id)
     labels_and_points = json.loads(_parse_json(result))
     # text -> list[str]
     labels = [lp["label"] for lp in labels_and_points]
@@ -144,7 +144,7 @@ async def compute_rewards(language_instruction: str, video: np.ndarray) -> tuple
     # )
 
     result = []
-    result.append(await get_subtasks(video[0], language_instruction, labels))
+    result.append(await get_subtasks(video[0], language_instruction, labels, model_id=model_id))
     print("2. SUBTASKS\n", result[0])
 
     # text -> list[dict]
@@ -173,7 +173,7 @@ async def compute_rewards(language_instruction: str, video: np.ndarray) -> tuple
         return progress, subtask_progress
 
     # NOTE: for matrix computation, we save calls by prematurely exiting once we know there are no subtasks
-    result.append(await get_descriptions_and_points(video, labels))
+    result.append(await get_descriptions_and_points(video, labels, model_id=model_id))
     print("2. DESCRIPTIONS\n", result[1])
 
     # list[str] -> dict{int: str}
@@ -182,7 +182,7 @@ async def compute_rewards(language_instruction: str, video: np.ndarray) -> tuple
 
     if subtasks:
         # 3. subtasks + scene description(s) -> verification
-        result = await get_verification(subtasks_list, scene_descriptions)
+        result = await get_verification(subtasks_list, scene_descriptions, model_id=model_id)
         # text -> list[dict]
         verification = json.loads(_parse_json(result))
     else:
