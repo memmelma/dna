@@ -8,26 +8,53 @@ from rvlm.functions.function_helpers import call_gemini
 
 _subtask_cache: dict = {}
 
-def _parse_json(text):
-    if type(text) == list:
-        return json.dumps(text)
-    print(f"[_parse_json] raw input (type={type(text).__name__}, len={len(text) if text else 0}):\n{repr(text)}")
-    if not text or not text.strip():
-        raise ValueError(f"Cannot parse empty response as JSON")
-    if type(text) == str:
-        text = text.replace("'", '"')
-    try:
-        match = re.search(r"```json\s*(.*?)```", text, re.DOTALL)
-        if match is None:
-            match = re.search(r"(.*?)```", text, re.DOTALL)
-        if match is None:
-            raise ValueError("No regex match found")
-        json_str = match.group(1).strip()
-        print(f"[_parse_json] extracted json_str: {repr(json_str)}")
-        return json.loads(json_str)
-    except Exception as e:
-        print(f"[_parse_json] regex parse failed ({e}), falling back to json.loads on full text")
-        return json.loads(text)
+def _parse_json(input) -> str:
+    """
+    Extract JSON from a long text similar to the frontend JS logic:
+    - Prefer a ```json ... ``` fenced code block
+    - Otherwise try to match an array like [... { ... }, ...]
+    If not found, return an empty string.
+    """
+
+    print("RAW _parse_json input:", input)
+
+    if type(input) == list:
+        return json.dumps(input)
+
+    elif type(input) == str:
+        code_block_pattern = re.compile(r"```(?:json)?\s*([\s\S]*?)\s*```")
+        match = code_block_pattern.search(input)
+        if match:
+            return match.group(1).strip()
+
+        array_pattern = re.compile(r"\[\s*\{[\s\S]*?\}\s*\]")
+        match = array_pattern.search(input)
+        if match:
+            return match.group(0).strip()
+
+    return None
+
+# def _parse_json(text):
+#     if type(text) == list:
+#         return json.dumps(text)
+
+#     print(f"[_parse_json] raw input (type={type(text).__name__}, len={len(text) if text else 0}):\n{repr(text)}")
+#     if not text or not text.strip():
+#         raise ValueError(f"Cannot parse empty response as JSON")
+#     if type(text) == str:
+#         text = text.replace("'", '"')
+#     try:
+#         match = re.search(r"```json\s*(.*?)```", text, re.DOTALL)
+#         if match is None:
+#             match = re.search(r"(.*?)```", text, re.DOTALL)
+#         if match is None:
+#             raise ValueError("No regex match found")
+#         json_str = match.group(1).strip()
+#         print(f"[_parse_json] extracted json_str: {repr(json_str)}")
+#         return json.loads(json_str)
+#     except Exception as e:
+#         print(f"[_parse_json] regex parse failed ({e}), falling back to json.loads on full text")
+#         return json.loads(text)
 
 async def get_a(video):
     prompt = textwrap.dedent("""\
@@ -86,7 +113,10 @@ async def get_b(language_instruction, video):
         [{"sub_task_1": str}, {"sub_task_2": str}, ...]
         ```
 
-        If the task cannot completed within the scene due to missing objects, return an empty list.
+        If the task cannot completed within the scene due to missing objects, return:
+        ```json
+        []
+        ```
     """)
 
     prompt = prompt.replace("{{TASK}}", language_instruction)
@@ -94,6 +124,9 @@ async def get_b(language_instruction, video):
     # call gemini
     res = await call_gemini(prompt, img_input=video[0], thinking_level="LOW")
     print("\nSUB-TASKS\n", res.text)
+
+    if "[]" in str(res.text):
+        return []
 
     json_str = re.search(r"```json(.*)```", res.text, re.DOTALL).group(1)
     json_obj = json.loads(json_str)
@@ -130,13 +163,17 @@ async def compute_language_based_subtasks(language_instruction, video):
     # a = await get_a(video)
     # b = await get_b(language_instruction)
 
+    # WARNING: don't set subtask cache for metric computation -- multiple videos queried w/ same task description ...
+    _subtask_cache = {}
+
     if language_instruction in _subtask_cache and len(_subtask_cache[language_instruction]) == 0:
         return []
         
     start_time = time.time()
     if language_instruction not in _subtask_cache:
-        a, b = await asyncio.gather(get_a(video), get_b(language_instruction, video))
+        a, b = await asyncio.gather(get_a(video), get_b(language_instruction, video))        
         _subtask_cache[language_instruction] = b
+
     else:
         a = await get_a(video)
     b = _subtask_cache[language_instruction]
@@ -144,12 +181,14 @@ async def compute_language_based_subtasks(language_instruction, video):
     if language_instruction in _subtask_cache and len(_subtask_cache[language_instruction]) == 0:
         return []
 
-    # a, b = await asyncio.gather(get_a(video), get_b(language_instruction, video))
+    # input is str(list of dicts)
     c = await get_c(_parse_json(b), a)
     end_time = time.time()
     print(f"Time taken for compute_language_based_subtasks: {end_time - start_time} seconds")
     print(f"[compute_language_based_subtasks] get_c raw response (type={type(c).__name__}, len={len(c) if c else 0}):\n{repr(c)}")
-    return _parse_json(c)
+
+    # return list of dicts
+    return json.loads(_parse_json(c))
 
 def rubric_to_dense_reward(subtasks, T, delay=0):
     rewards = np.zeros(T)

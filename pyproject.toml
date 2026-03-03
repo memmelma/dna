@@ -6,6 +6,7 @@ requires-python = ">=3.10"
 dependencies = [
     "google-genai",
     #"iisignature",
+    "dtw-python",
 ]
 
 [build-system]

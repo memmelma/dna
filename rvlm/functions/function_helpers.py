@@ -2,13 +2,64 @@ import os
 import io
 import re
 import json
+import asyncio
 import imageio
 import numpy as np
 from google import genai
 from google.genai import types
 
-GOOGLE_API_KEY = "AIzaSyCu84vRyQrfMnCkVqxpOydodfEfobPjWO0"
-_client = genai.Client(api_key=GOOGLE_API_KEY)
+GOOGLE_API_KEYS = [
+    # gemini-er-3
+    # "AIzaSyCa83aP2XNC2cCZufGchURsY0zaJhRqx0g",
+    # gemini-er-2
+    "AIzaSyCr4aa7RsUW1zRCcJACVS6M6J3A08Uy1M0",
+    # gemini-er-0
+    "AIzaSyAIyKWeVkmuRLxIjuuLJglrts0TVv4eSco",
+    # gemini-er-1
+    "AIzaSyCu84vRyQrfMnCkVqxpOydodfEfobPjWO0",
+    # gemini-er
+    "AIzaSyB5Zm04vgtNo0C3-dHM6BTuLPLj--fYLl4",
+]
+
+class GeminiKeyPool:
+    def __init__(self, api_keys: list, max_retries: int = 5, base_delay: float = 1.0, max_delay: float = 60.0):
+        self._clients = [genai.Client(api_key=k) for k in api_keys]
+        self._idx = 0
+        self._lock = asyncio.Lock()
+        self._max_retries = max_retries
+        self._base_delay = base_delay
+        self._max_delay = max_delay
+
+    async def _claim_next(self) -> tuple:
+        """Atomically advance the index and return (idx, client) for this call."""
+        async with self._lock:
+            idx = self._idx
+            self._idx = (self._idx + 1) % len(self._clients)
+        return idx, self._clients[idx]
+
+    async def _rotate(self, from_idx: int) -> None:
+        """On quota exhaustion, skip past from_idx if no one else already did."""
+        async with self._lock:
+            if self._idx == (from_idx + 1) % len(self._clients):
+                self._idx = (self._idx + 1) % len(self._clients)
+                print(f"[GeminiKeyPool] quota hit on key {from_idx}, skipping to key {self._idx}")
+
+    async def generate_content(self, **kwargs):
+        for attempt in range(self._max_retries + 1):
+            idx, client = await self._claim_next()
+            try:
+                return await client.aio.models.generate_content(**kwargs)
+            except Exception as e:
+                err = str(e)
+                delay = min(self._base_delay * (2 ** attempt), self._max_delay)
+                print(f"[GeminiKeyPool] attempt {attempt + 1}/{self._max_retries + 1} failed (key {idx}): {err}, retrying in {delay:.1f}s")
+                if attempt == self._max_retries:
+                    raise
+                if "429" in err or "RESOURCE_EXHAUSTED" in err:
+                    await self._rotate(idx)
+                await asyncio.sleep(delay)
+
+_key_pool = GeminiKeyPool(GOOGLE_API_KEYS)
 
 from rvlm.annotator.annotator_reward import SimpleCoTrackerDTW
 _tracker: SimpleCoTrackerDTW = None
@@ -99,11 +150,9 @@ async def call_gemini(prompt, video_input=None, img_input=None, thinking_level="
     #     )
     else:
         raise ValueError(f"Unsupported model ID: {model_id}")
-    # request
-    response = await _client.aio.models.generate_content(
+    response = await _key_pool.generate_content(
         model=model_id,
         contents=[types.Content(role="user", parts=parts)],
         config=generate_content_config,
     )
-
     return response
