@@ -5,6 +5,7 @@ description = "Vision-Language Model based reward functions"
 requires-python = ">=3.10"
 dependencies = [
     "google-genai",
+    "openai",
     #"iisignature",
     "dtw-python",
 ]
