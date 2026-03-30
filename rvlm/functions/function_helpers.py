@@ -48,6 +48,8 @@ class GeminiKeyPool:
         for attempt in range(self._max_retries + 1):
             idx, client = await self._claim_next()
             try:
+                # random delay to avoid hitting RPM limit
+                await asyncio.sleep(np.random.uniform(1, 3))
                 return await client.aio.models.generate_content(**kwargs)
             except Exception as e:
                 err = str(e)
@@ -61,10 +63,10 @@ class GeminiKeyPool:
 
 _key_pool = GeminiKeyPool(GOOGLE_API_KEYS)
 
-from rvlm.annotator.annotator_reward import SimpleCoTrackerDTW
-_tracker: SimpleCoTrackerDTW = None
+_tracker = None
 
 def _get_tracker():
+    from rvlm.annotator.annotator_reward import SimpleCoTrackerDTW
     global _tracker
     if _tracker is None:
         _tracker = SimpleCoTrackerDTW()
