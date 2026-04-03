@@ -54,7 +54,7 @@ class GeminiKeyPool:
 _key_pool = GeminiKeyPool(GOOGLE_API_KEYS)
 _key_pool_preview = GeminiKeyPool(GOOGLE_API_KEYS_PREVIEW)
 
-async def call_gemini(prompt, video_input=None, img_input=None, thinking_level="MEDIUM", model_id: str = "gemini-3-flash-preview", json_output: bool = False, response_schema=None, include_thoughts=False):
+async def call_gemini(prompt, video_input=None, img_input=None, thinking_level="MEDIUM", model_id: str = "gemini-3-flash-preview", media_resolution="MEDIA_RESOLUTION_HIGH", json_output: bool = False, response_schema=None, include_thoughts=False):
     """
     Calls Gemini with a video, one or more images, and a text prompt.
     
