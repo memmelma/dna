@@ -6,8 +6,17 @@ requires-python = ">=3.10"
 dependencies = [
     "google-genai",
     "openai",
-    #"iisignature",
-    "dtw-python",
+    "imageio",
+    "numpy",
+    "pillow",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+qwen = [
+    "torch",
+    "accelerate",
+    "transformers>=4.57",
 ]
 
 [build-system]
@@ -19,6 +28,3 @@ packages = ["rvlm"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
-
-# [tool.uv.extra-build-dependencies]
-# iisignature = ["numpy"]

@@ -1,2 +1,3 @@
-rvlm/requests/secret.py
-*.pyc
+secrets.py
+uv.lock
+__pycache__/

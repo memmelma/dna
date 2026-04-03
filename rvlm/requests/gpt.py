@@ -7,10 +7,7 @@ import imageio
 import numpy as np
 import openai
 
-
-OPENAI_API_KEYS = [
-]
-
+from rvlm.secrets import OPENAI_API_KEYS
 
 class GPTResponse:
     """Wrapper providing .text to match Gemini response interface."""
@@ -83,6 +80,7 @@ async def call_gpt(
     img_input=None,
     thinking_level="MEDIUM",
     model_id: str = "gpt-4o",
+    media_resolution=None,
     json_output: bool = False,
     response_schema=None,
 ):
@@ -100,6 +98,7 @@ async def call_gpt(
         thinking_level: "LOW", "MEDIUM", or "HIGH" — mapped to reasoning_effort
                         for o-series models; ignored for gpt-4o.
         model_id: OpenAI model ID (e.g. "gpt-4o", "o3", "o4-mini")
+        media_resolution: Ignored (Gemini-only); accepted for call_api parity.
         json_output: If True, request JSON output format.
         response_schema: Optional JSON schema dict for structured output.
     """

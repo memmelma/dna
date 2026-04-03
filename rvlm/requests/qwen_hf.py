@@ -220,6 +220,8 @@ async def call_qwen_hf(
     thinking_level: str = "MEDIUM",
     model_id: str = "Qwen/Qwen3-VL-8B-Instruct",
     video_fps: float = 1.0,
+    json_output: bool = False,
+    response_schema=None,
 ):
     """
     Run Qwen3-VL via Hugging Face ``transformers`` (local GPU/CPU).
@@ -227,7 +229,11 @@ async def call_qwen_hf(
     ``model_id`` can be a full HF id (e.g. ``Qwen/Qwen3-VL-8B-Instruct``) or a short alias
     like ``qwen3-vl-8b-instruct``. Generation follows the Qwen3-VL model card (VL vs text-only);
     ``thinking_level`` caps ``max_new_tokens`` below the card ``out_seq_length``.
+
+    ``json_output`` / ``response_schema`` are accepted for API parity with Gemini/GPT; structured
+    output is not enforced in the local HF path (prompts should request JSON when needed).
     """
+    _ = (json_output, response_schema)
     hf_id = _resolve_hf_model_id(model_id)
     text = await asyncio.to_thread(
         _generate_sync,

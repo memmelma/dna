@@ -1,7 +1,0 @@
-README.md
-setup.py
-rvlm.egg-info/PKG-INFO
-rvlm.egg-info/SOURCES.txt
-rvlm.egg-info/dependency_links.txt
-rvlm.egg-info/requires.txt
-rvlm.egg-info/top_level.txt

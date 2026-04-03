@@ -6,10 +6,7 @@ import numpy as np
 from google import genai
 from google.genai import types
 
-GOOGLE_API_KEYS = [
-]
-GOOGLE_API_KEYS_PREVIEW = [
-]
+from rvlm.secrets import GOOGLE_API_KEYS, GOOGLE_API_KEYS_PREVIEW
 
 class GeminiKeyPool:
     def __init__(self, api_keys: list, max_retries: int = 5, base_delay: float = 1.0, max_delay: float = 60.0):
