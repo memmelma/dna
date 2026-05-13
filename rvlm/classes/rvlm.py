@@ -30,7 +30,7 @@ class RVLM:
         self,
         model_name: str = "gemini-3-flash-preview",
         thinking_level: str = "MEDIUM",
-        modality: str = "video",
+        modality: str = "video_grounded_hierarchy_single",
         **kwargs,
     ):
         self.model_name = model_name
@@ -43,12 +43,18 @@ class RVLM:
         import datetime
         self.timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        try:
-            self.root_dir = f"/gpfs/home/memmelma/projects/rvlm/tmp/{self.timestamp}"
-            os.makedirs(self.root_dir, exist_ok=True)
-        except:
-            self.root_dir = f"/home/memmelma/Projects/iql/tmp/{self.timestamp}"
-            os.makedirs(self.root_dir, exist_ok=True)
+        import tempfile
+        for candidate in [
+            f"/gpfs/home/memmelma/projects/rvlm/tmp/{self.timestamp}",
+            f"/home/memmelma/Projects/iql/tmp/{self.timestamp}",
+            os.path.join(tempfile.gettempdir(), f"rvlm/{self.timestamp}"),
+        ]:
+            try:
+                os.makedirs(candidate, exist_ok=True)
+                self.root_dir = candidate
+                break
+            except PermissionError:
+                continue
 
     async def compute_progress_async(self, frames_array: np.ndarray, task_description: str = "") -> List[Optional[float]]:
         """
