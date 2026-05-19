@@ -24,7 +24,8 @@ from rvlm.functions.video_to_progress import (
     get_progress_from_description_rubric,
     get_progress_from_description_no_completion_state,
     get_progress_from_video,
-    get_progress_from_description_roboreward
+    get_progress_from_description_roboreward,
+    get_progress_from_description_experimental,
 )
 
 def response_to_json(response: str) -> dict:
@@ -86,7 +87,7 @@ class RVLM:
                 modality, processing, reasoning = self.modality.rsplit("_", 2)
                 assert modality in ["video", "image", "all_frames", "all_frames_grounded", "all_frames_ungrounded", "stacked_frames", "single_frames", "stacked_frames_grounded", "video_grounded"]
                 assert processing in ["hierarchy", "endtoend"]
-                assert reasoning in ["single", "distributional", "rubric", "no_completion_state", "roboreward"]
+                assert reasoning in ["single", "distributional", "rubric", "no_completion_state", "roboreward", "experimental"]
 
                 # assert modality in ["video", "image", "all_frames", "stacked_frames", "single_frames"]
 
@@ -106,7 +107,7 @@ class RVLM:
                         text = results.text
 
                 if processing == "hierarchy":
-                    assert reasoning in ["single", "distributional", "rubric", "no_completion_state", "roboreward"]
+                    assert reasoning in ["single", "distributional", "rubric", "no_completion_state", "roboreward", "experimental"]
                     assert modality in ["video", "image", "all_frames", "stacked_frames", "single_frames", "all_frames_grounded", "all_frames_ungrounded", "stacked_frames_grounded", "video_grounded"]
                     
                     if modality == "video":
@@ -154,6 +155,11 @@ class RVLM:
                         results = await get_progress_from_description_rubric(description, task_description, model_id=self.model_name, thinking_level=self.thinking_level)
                         progress = response_to_json(results)["progress"]
                         # progress = [v for v in progress.values()]
+                        text = results.text
+                    elif reasoning == "experimental":
+                        results = await get_progress_from_description_experimental(description, task_description, model_id=self.model_name, thinking_level=self.thinking_level)
+                        print("progress:\n", results.text)
+                        progress = response_to_json(results)["progress"]
                         text = results.text
                     elif reasoning == "distributional":
                         results = await get_progress_from_description_distributional(description, task_description, model_id=self.model_name, thinking_level=self.thinking_level, k_requests=5)
