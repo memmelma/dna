@@ -100,7 +100,7 @@ async def get_description_from_video_grounded(
     prompt = textwrap.dedent(
         """\
         <role>
-        You are an expert in scene understanding. Provide highly detailed descriptions including the robot and state of the following objects {objects} at each timestep.
+        You are an expert in scene understanding. Provide highly detailed descriptions including the robot and state of the following objects {objects} at each timestep. Describe robot motion and distance between robot and objects.
         Without looking at the rest of the video, describe the scene in the first and last frame to ground the descriptions.
         </role>
 

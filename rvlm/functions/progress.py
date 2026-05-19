@@ -61,6 +61,7 @@ async def get_progress_from_description_distributional(
     return res
 
 
+
 async def get_progress_from_description(
     description: dict,
     task: str,
@@ -79,11 +80,9 @@ async def get_progress_from_description(
         1. The task text fixes which objects count (category, color, shape, and wording). Scene descriptions are the only evidence of what is in the environment. Do not "ground" the task by renaming scene objects to match the task.
         2. For each object the task requires, it may be tied only to scene mentions that refer to that same entity without contradiction. Do not substitute a different object because it could serve the same role. If attributes in the scene conflict with the task's description of that object, or no clear referent exists, treat that requirement as absent.
         3. You may align short paraphrases across timesteps only when they plainly denote the same physical object already present in the scene—not to map task nouns onto other objects.
-        4. If any required object is absent by these rules, the task cannot be completed in this scene: use all 0% progress and explain in "completion state". Otherwise define precisely what the environment would look like if the task were FULLY and COMPLETELY finished (not started, not halfway—entirely done).
+        4. If ALL required objects are absent by these rules, the task cannot be completed in this scene: use all 0% progress and explain in "completion state". Otherwise define precisely what the environment would look like if the task were FULLY and COMPLETELY finished (not started, not halfway—entirely done). Reward partial progress if the task is only partially completed and some required objects are present.
         5. For each timestep, reason about the % progress towards that fully completed state.
-
-        
-        Progress is defined as % progress towards the fully completed state. Progress does not have to be monotonic, i.e., the robot can reverse progress.
+        6. Progress is defined as % progress towards the fully completed state. Progress does not have to be monotonic, i.e., the robot can reverse progress.
         
         Respond with a list of progress values (ordered by frame) in the following JSON format:
         [

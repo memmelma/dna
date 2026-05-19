@@ -41,8 +41,7 @@ class RVLM:
         self,
         model_name: str = "gemini-3-flash-preview",
         thinking_level: str = "MEDIUM",
-        modality: str = "video",
-        video_logging: bool = True,
+        modality: str = "video_grounded_hierarchy_single",
         **kwargs,
     ):
         self.model_name = model_name
