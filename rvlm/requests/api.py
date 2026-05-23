@@ -14,19 +14,18 @@ async def call_api(prompt, video_input=None, img_input=None, thinking_level="MED
         media_resolution="low"
         return await call_gpt(prompt, video_input, img_input, thinking_level, model_id, media_resolution, json_output, response_schema)
     elif model_id.lower().startswith("qwen") or model_id.startswith("Qwen/"):
-        from rvlm.requests.qwen import call_qwen
+        from rvlm.requests.qwen_hf import call_qwen_hf, _resolve_hf_model_id
 
-        return await call_qwen(
+        hf_id = _resolve_hf_model_id(model_id)
+        enable_thinking = "thinking" in hf_id.lower()
+        return await call_qwen_hf(
             prompt,
             video_input=video_input,
             img_input=img_input,
             thinking_level=thinking_level,
             model_id=model_id,
             json_output=json_output,
-            response_schema=response_schema,
-            include_thoughts=include_thoughts,
-            max_new_tokens=max_new_tokens,
-            greedy=greedy,
+            enable_thinking=enable_thinking,
         )
     else:
         raise ValueError(f"Invalid model ID: {model_id}")

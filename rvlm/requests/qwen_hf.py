@@ -45,12 +45,16 @@ _LOAD_LOCK = threading.Lock()
 def _resolve_hf_model_id(model_id: str) -> str:
     aliases = {
         "qwen3-vl-8b-instruct": "Qwen/Qwen3-VL-8B-Instruct",
+        # "qwen3-vl-8b-thinking": "Qwen/Qwen3-VL-8B-Thinking",
+        # "qwen3-vl-32b-instruct": "Qwen/Qwen3-VL-32B-Instruct",
+        # "qwen3-vl-32b-thinking": "Qwen/Qwen3-VL-32B-Thinking",
     }
-    key = model_id.strip()
+    key = model_id.strip().lower()
     if key in aliases:
         return aliases[key]
-    if "/" in key and not key.startswith("qwen-"):
-        return key
+    raw = model_id.strip()
+    if "/" in raw:
+        return raw
     return "Qwen/Qwen3-VL-8B-Instruct"
 
 
@@ -95,7 +99,7 @@ def _generation_kwargs(
         "top_p": spec["top_p"],
         "top_k": spec["top_k"],
         "repetition_penalty": spec["repetition_penalty"],
-        "max_new_tokens": spec["max_output_length"], # max_new,
+        "max_new_tokens": max_new,
     }
 
 
@@ -108,14 +112,12 @@ def _load_model(hf_model_id: str) -> tuple[Any, Any]:
                 torch_dtype="auto",
                 device_map="auto",
             )
-            # try:
-            #     kwargs["attn_implementation"] = "flash_attention_2"
-            #     model = model_cls.from_pretrained(**kwargs)
-            # except Exception:
-            #     kwargs.pop("attn_implementation", None)
-            #     model = model_cls.from_pretrained(**kwargs)
-            kwargs["attn_implementation"] = "flash_attention_2"
-            model = model_cls.from_pretrained(**kwargs)
+            try:
+                kwargs["attn_implementation"] = "flash_attention_2"
+                model = model_cls.from_pretrained(**kwargs)
+            except Exception:
+                kwargs.pop("attn_implementation", None)
+                model = model_cls.from_pretrained(**kwargs)
             
             processor = proc_cls.from_pretrained(hf_model_id, trust_remote_code=True)
             model.eval()
@@ -178,12 +180,10 @@ def _generate_sync(
     thinking_level: str,
     hf_model_id: str,
     video_fps: float,
-    enable_thinking: bool = True,
 ) -> tuple[str, str]:
-    # Qwen3 thinking: append /think soft-prompt so the model emits a <think> block.
-    # apply_chat_template does not yet accept enable_thinking for Qwen3-VL processors;
-    # the soft-prompt approach works reliably for both VL and text-only calls.
-    effective_prompt = (prompt + "\n\n/think") if enable_thinking else prompt
+    # Qwen3-VL Thinking edition: the chat template auto-injects <think> start; just
+    # pass the prompt as-is.  Instruct edition does not think regardless of /think.
+    effective_prompt = prompt
 
     content, tmp_video = _build_user_content(effective_prompt, video_input, img_input, video_fps)
     messages = [{"role": "user", "content": content}]
@@ -214,11 +214,23 @@ def _generate_sync(
             new_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
         )
         raw = out[0].strip()
-        # Separate <think>…</think> block from the answer text
         import re as _re
+        # Thinking edition: template injects opening <think> before generation, so the
+        # output starts with the thinking content followed by </think>\n<answer>.
+        # Instruct edition: no <think> block at all.
         think_match = _re.search(r"<think>(.*?)</think>", raw, flags=_re.DOTALL)
-        thinking_text = think_match.group(1).strip() if think_match else ""
-        answer = _re.sub(r"<think>.*?</think>", "", raw, flags=_re.DOTALL).strip()
+        if think_match:
+            thinking_text = think_match.group(1).strip()
+            answer = _re.sub(r"<think>.*?</think>", "", raw, flags=_re.DOTALL).strip()
+        else:
+            # Thinking model: output starts directly with thinking content, ends with </think>
+            orphan_close = _re.search(r"(.*?)</think>\s*", raw, flags=_re.DOTALL)
+            if orphan_close:
+                thinking_text = orphan_close.group(1).strip()
+                answer = raw[orphan_close.end():].strip()
+            else:
+                thinking_text = ""
+                answer = raw
         return answer, thinking_text
     finally:
         if tmp_video and tmp_video.startswith(tempfile.gettempdir()):
@@ -237,17 +249,17 @@ async def call_qwen_hf(
     video_fps: float = 1.0,
     json_output: bool = False,
     response_schema=None,
-    enable_thinking: bool = True,
+    enable_thinking: bool = False,
     include_thoughts: bool = False,
 ):
     """
     Run Qwen3-VL via Hugging Face ``transformers`` (local GPU/CPU).
 
-    ``enable_thinking=True`` (default) appends the ``/think`` soft-prompt so the model
-    emits a ``<think>`` block before its answer. The block is stripped from ``.text``
-    and available via ``.thinking``.
+    Thinking is auto-detected from the resolved model id: Qwen3-VL-*-Thinking models
+    emit a thinking block which is stripped from ``.text`` and stored in ``.thinking``.
+    Instruct models do not think regardless of ``enable_thinking``.
     """
-    _ = (json_output, response_schema, include_thoughts)
+    _ = (json_output, response_schema, include_thoughts, enable_thinking)
     hf_id = _resolve_hf_model_id(model_id)
     result = await asyncio.to_thread(
         _generate_sync,
@@ -257,7 +269,6 @@ async def call_qwen_hf(
         thinking_level,
         hf_id,
         video_fps,
-        enable_thinking,
     )
     answer, thinking = result
     return QwenHFResponse(answer, thinking)
