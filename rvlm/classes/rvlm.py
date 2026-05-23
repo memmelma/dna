@@ -140,8 +140,11 @@ class RVLM:
                         text = json.dumps([r.text for r in results])
                 
                 if len(progress) != len(frames_array):
+                    # raise ValueError(f"Progress length mismatch: {len(progress)} != {len(frames_array)}")
+                    print(f"Progress length mismatch: {len(progress)} != {len(frames_array)}")
+                    progress = progress[:len(frames_array)]
                     raise ValueError(f"Progress length mismatch: {len(progress)} != {len(frames_array)}")
-                 
+
                 # normalize progress to [0, 1]
                 progress = np.array(progress) / 100.0
                 
