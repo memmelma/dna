@@ -97,7 +97,7 @@ async def call_gemini(prompt, video_input=None, img_input=None, thinking_level="
     parts.append(types.Part.from_text(text=prompt))
 
     # configuration
-    if "gemini-robotics-er-early-access" in model_id:
+    if "gemini-robotics-er-early-access" in model_id or "gemini-robotics-er-1.5-preview" in model_id or "gemini-robotics-er-1.6-preview" in model_id:
         generate_content_config = types.GenerateContentConfig(
             thinking_config=types.ThinkingConfig(thinking_level=thinking_level, include_thoughts=include_thoughts),
             media_resolution="MEDIA_RESOLUTION_HIGH",

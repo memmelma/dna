@@ -80,7 +80,7 @@ async def call_gpt(
     img_input=None,
     thinking_level="MEDIUM",
     model_id: str = "gpt-4o",
-    media_resolution=None,
+    media_resolution="low",
     json_output: bool = False,
     response_schema=None,
 ):
@@ -117,7 +117,7 @@ async def call_gpt(
         for frame in frames:
             buf = io.BytesIO()
             imageio.imwrite(buf, frame, format="JPEG")
-            content.append(_make_image_part(_encode_image_to_b64(buf.getvalue())))
+            content.append(_make_image_part(_encode_image_to_b64(buf.getvalue()), detail=media_resolution))
 
     # (optional) image(s)
     if img_input is not None:
@@ -132,7 +132,7 @@ async def call_gpt(
                     img_data = f.read()
             else:
                 img_data = img
-            content.append(_make_image_part(_encode_image_to_b64(img_data)))
+            content.append(_make_image_part(_encode_image_to_b64(img_data), detail=media_resolution))
 
     # text prompt
     content.append({"type": "text", "text": prompt})
@@ -144,7 +144,8 @@ async def call_gpt(
     )
 
     # reasoning_effort for o-series models (o1, o3, o4-mini, etc.)
-    if model_id.startswith(("o1", "o3", "o4")):
+    # if model_id.startswith(("o1", "o3", "o4")):
+    if "gpt-4.1-mini" not in model_id:
         kwargs["reasoning_effort"] = thinking_level.lower()
 
     # JSON / structured output

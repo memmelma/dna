@@ -22,8 +22,20 @@ from rvlm.functions.video_to_progress import (
     get_progress_from_description,
     get_progress_from_description_distributional,
     get_progress_from_description_rubric,
+    get_progress_from_description_no_completion_state,
     get_progress_from_video,
+    get_progress_from_description_roboreward,
+    get_progress_from_description_experimental,
 )
+
+def response_to_json(response: str) -> dict:
+    response_json = json.loads(response.text)
+    try:
+        return response_json[0]
+    except KeyError:
+        return response_json
+    except Exception as e:
+        raise ValueError(f"Failed to parse response: {e}")
 
 class RVLM:
     def __init__(
@@ -31,30 +43,28 @@ class RVLM:
         model_name: str = "gemini-3-flash-preview",
         thinking_level: str = "MEDIUM",
         modality: str = "video_grounded_hierarchy_single",
+        video_logging: bool = False,
         **kwargs,
     ):
         self.model_name = model_name
         self.thinking_level = thinking_level
         self.modality = modality
+        self.video_logging = video_logging
         self.ctr = 0
 
         self.object_cache = {}
 
         import datetime
         self.timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        import tempfile
-        for candidate in [
-            f"/gpfs/home/memmelma/projects/rvlm/tmp/{self.timestamp}",
-            f"/home/memmelma/Projects/iql/tmp/{self.timestamp}",
-            os.path.join(tempfile.gettempdir(), f"rvlm/{self.timestamp}"),
-        ]:
+
+        self.root_dir = None
+        if self.video_logging:
             try:
-                os.makedirs(candidate, exist_ok=True)
-                self.root_dir = candidate
-                break
-            except PermissionError:
-                continue
+                self.root_dir = f"/gpfs/home/memmelma/projects/rvlm/tmp/{self.timestamp}"
+                os.makedirs(self.root_dir, exist_ok=True)
+            except Exception:
+                self.root_dir = f"/home/memmelma/Projects/iql/tmp/{self.timestamp}"
+                os.makedirs(self.root_dir, exist_ok=True)
 
     async def compute_progress_async(self, frames_array: np.ndarray, task_description: str = "") -> List[Optional[float]]:
         """
@@ -78,7 +88,7 @@ class RVLM:
                 modality, processing, reasoning = self.modality.rsplit("_", 2)
                 assert modality in ["video", "image", "all_frames", "all_frames_grounded", "all_frames_ungrounded", "stacked_frames", "single_frames", "stacked_frames_grounded", "video_grounded"]
                 assert processing in ["hierarchy", "endtoend"]
-                assert reasoning in ["single", "distributional", "rubric"]
+                assert reasoning in ["single", "distributional", "rubric", "no_completion_state", "roboreward", "experimental"]
 
                 # assert modality in ["video", "image", "all_frames", "stacked_frames", "single_frames"]
 
@@ -88,17 +98,17 @@ class RVLM:
                     
                     if modality == "video":
                         results = await get_progress_from_video(frames_array, task_description, model_id=self.model_name, thinking_level=self.thinking_level)
-                        progress = json.loads(results.text)[0]["progress"]
+                        progress = response_to_json(results)["progress"]
                         # progress = [v for v in progress.values()]
                         text = results.text
                     elif modality == "all_frames":
                         results = await get_progress_from_all_frames(frames_array, task_description, model_id=self.model_name, thinking_level=self.thinking_level)
-                        progress = json.loads(results.text)[0]["progress"]
+                        progress = response_to_json(results)["progress"]
                         # progress = [v for v in progress.values()]
                         text = results.text
 
                 if processing == "hierarchy":
-                    assert reasoning in ["single", "distributional", "rubric"]
+                    assert reasoning in ["single", "distributional", "rubric", "no_completion_state", "roboreward", "experimental"]
                     assert modality in ["video", "image", "all_frames", "stacked_frames", "single_frames", "all_frames_grounded", "all_frames_ungrounded", "stacked_frames_grounded", "video_grounded"]
                     
                     if modality == "video":
@@ -122,15 +132,35 @@ class RVLM:
 
                     description = {i: d["description"] for i, d in enumerate(description_raw)}
                     
+                    print("description:\n", description)
+
                     if reasoning == "single":
                         results = await get_progress_from_description(description, task_description, model_id=self.model_name, thinking_level=self.thinking_level)
-                        progress = json.loads(results.text)[0]["progress"]
+                        print("progress:\n", results.text)
+                        progress = response_to_json(results)["progress"]
+                        # progress = [v for v in progress.values()]
+                        text = results.text
+                    elif reasoning == "roboreward":
+                        results = await get_progress_from_description_roboreward(description, task_description, model_id=self.model_name, thinking_level=self.thinking_level)
+                        score = response_to_json(results)["score"]
+                        normalized = (score - 1) / 4 * 100
+                        progress = [normalized] * len(frames_array)
+                        # progress = [v for v in progress.values()]
+                        text = results.text
+                    elif reasoning == "no_completion_state":
+                        results = await get_progress_from_description_no_completion_state(description, task_description, model_id=self.model_name, thinking_level=self.thinking_level)
+                        progress = response_to_json(results)["progress"]
                         # progress = [v for v in progress.values()]
                         text = results.text
                     elif reasoning == "rubric":
                         results = await get_progress_from_description_rubric(description, task_description, model_id=self.model_name, thinking_level=self.thinking_level)
-                        progress = json.loads(results.text)[0]["progress"]
+                        progress = response_to_json(results)["progress"]
                         # progress = [v for v in progress.values()]
+                        text = results.text
+                    elif reasoning == "experimental":
+                        results = await get_progress_from_description_experimental(description, task_description, model_id=self.model_name, thinking_level=self.thinking_level)
+                        print("progress:\n", results.text)
+                        progress = response_to_json(results)["progress"]
                         text = results.text
                     elif reasoning == "distributional":
                         results = await get_progress_from_description_distributional(description, task_description, model_id=self.model_name, thinking_level=self.thinking_level, k_requests=5)
@@ -202,17 +232,16 @@ class RVLM:
                 out.append(np.concatenate([video[t], plot_img], axis=1))
             return np.stack(out, axis=0)
 
-        video = progress_video(frames_array, progress, task_description)
-        imageio.mimwrite(f"{self.root_dir}/{self.ctr}_video_{max(progress)*100:.0f}.mp4", video, fps=1)
-        imageio.mimwrite(f"{self.root_dir}/{self.ctr}_video_raw_{max(progress)*100:.0f}.mp4", frames_array, fps=1)
-        
-        
-        print(f"{self.root_dir}/{self.ctr}_text_history_{max(progress)*100:.0f}.txt")
+        if self.video_logging and self.root_dir is not None:
+            video = progress_video(frames_array, progress, task_description)
+            imageio.mimwrite(f"{self.root_dir}/{self.ctr}_video_{max(progress)*100:.0f}.mp4", video, fps=1)
+            imageio.mimwrite(f"{self.root_dir}/{self.ctr}_video_raw_{max(progress)*100:.0f}.mp4", frames_array, fps=1)
 
+            print(f"{self.root_dir}/{self.ctr}_text_history_{max(progress)*100:.0f}.txt")
 
-        with open(f"{self.root_dir}/{self.ctr}_text_history_{max(progress)*100:.0f}.txt", "w") as f:
-            f.write(task_description + "\n" + str(description_raw) + "\n" + str(description) + "\n" + str(text))
-        self.ctr += 1
+            with open(f"{self.root_dir}/{self.ctr}_text_history_{max(progress)*100:.0f}.txt", "w") as f:
+                f.write(task_description + "\n" + str(description_raw) + "\n" + str(description) + "\n" + str(text))
+            self.ctr += 1
 
         print(f"Full computation took: {time.time() - start_time} seconds")
 
