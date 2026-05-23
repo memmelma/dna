@@ -29,10 +29,13 @@ def _qwen_model_classes():
 
 
 class QwenHFResponse:
-    """Matches Gemini/GPT: callers use ``response.text``."""
+    """Matches Gemini/GPT: callers use ``response.text``.
+    ``response.thinking`` holds the raw ``<think>…</think>`` block (empty string if absent).
+    """
 
-    def __init__(self, text: str):
+    def __init__(self, text: str, thinking: str = ""):
         self.text = text
+        self.thinking = thinking
 
 
 _MODEL_CACHE: dict[str, tuple[Any, Any]] = {}
@@ -175,8 +178,14 @@ def _generate_sync(
     thinking_level: str,
     hf_model_id: str,
     video_fps: float,
-) -> str:
-    content, tmp_video = _build_user_content(prompt, video_input, img_input, video_fps)
+    enable_thinking: bool = True,
+) -> tuple[str, str]:
+    # Qwen3 thinking: append /think soft-prompt so the model emits a <think> block.
+    # apply_chat_template does not yet accept enable_thinking for Qwen3-VL processors;
+    # the soft-prompt approach works reliably for both VL and text-only calls.
+    effective_prompt = (prompt + "\n\n/think") if enable_thinking else prompt
+
+    content, tmp_video = _build_user_content(effective_prompt, video_input, img_input, video_fps)
     messages = [{"role": "user", "content": content}]
     try:
         model, processor = _load_model(hf_model_id)
@@ -204,7 +213,13 @@ def _generate_sync(
         out = processor.batch_decode(
             new_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
         )
-        return out[0].strip()
+        raw = out[0].strip()
+        # Separate <think>…</think> block from the answer text
+        import re as _re
+        think_match = _re.search(r"<think>(.*?)</think>", raw, flags=_re.DOTALL)
+        thinking_text = think_match.group(1).strip() if think_match else ""
+        answer = _re.sub(r"<think>.*?</think>", "", raw, flags=_re.DOTALL).strip()
+        return answer, thinking_text
     finally:
         if tmp_video and tmp_video.startswith(tempfile.gettempdir()):
             try:
@@ -222,20 +237,19 @@ async def call_qwen_hf(
     video_fps: float = 1.0,
     json_output: bool = False,
     response_schema=None,
+    enable_thinking: bool = True,
+    include_thoughts: bool = False,
 ):
     """
     Run Qwen3-VL via Hugging Face ``transformers`` (local GPU/CPU).
 
-    ``model_id`` can be a full HF id (e.g. ``Qwen/Qwen3-VL-8B-Instruct``) or a short alias
-    like ``qwen3-vl-8b-instruct``. Generation follows the Qwen3-VL model card (VL vs text-only);
-    ``thinking_level`` caps ``max_new_tokens`` below the card ``out_seq_length``.
-
-    ``json_output`` / ``response_schema`` are accepted for API parity with Gemini/GPT; structured
-    output is not enforced in the local HF path (prompts should request JSON when needed).
+    ``enable_thinking=True`` (default) appends the ``/think`` soft-prompt so the model
+    emits a ``<think>`` block before its answer. The block is stripped from ``.text``
+    and available via ``.thinking``.
     """
-    _ = (json_output, response_schema)
+    _ = (json_output, response_schema, include_thoughts)
     hf_id = _resolve_hf_model_id(model_id)
-    text = await asyncio.to_thread(
+    result = await asyncio.to_thread(
         _generate_sync,
         prompt,
         video_input,
@@ -243,5 +257,7 @@ async def call_qwen_hf(
         thinking_level,
         hf_id,
         video_fps,
+        enable_thinking,
     )
-    return QwenHFResponse(text)
+    answer, thinking = result
+    return QwenHFResponse(answer, thinking)
