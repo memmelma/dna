@@ -17,6 +17,7 @@ from rvlm.functions.progress import (
     get_progress_from_description_rubric,
     get_progress_from_description_no_completion_state,
     get_progress_from_video,
+    get_progress_from_video_roboreward,
     get_progress_from_description_roboreward,
     get_progress_from_description_experimental,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "get_progress_from_description_rubric",
     "get_progress_from_description_no_completion_state",
     "get_progress_from_video",
+    "get_progress_from_video_roboreward",
     "get_progress_from_description_roboreward",
     "get_progress_from_description_experimental",
 ]

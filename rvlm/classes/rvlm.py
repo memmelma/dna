@@ -9,6 +9,7 @@ import imageio
 import numpy as np
 from PIL import Image
 
+from rvlm.functions.progress import get_progress_from_video_naive
 from rvlm.functions.video_to_progress import (
     get_description_from_all_frames,
     get_description_from_all_frames_grounded,
@@ -24,6 +25,7 @@ from rvlm.functions.video_to_progress import (
     get_progress_from_description_rubric,
     get_progress_from_description_no_completion_state,
     get_progress_from_video,
+    get_progress_from_video_roboreward,
     get_progress_from_description_roboreward,
     get_progress_from_description_experimental,
 )
@@ -43,6 +45,7 @@ class RVLM:
         model_name: str = "gemini-3-flash-preview",
         thinking_level: str = "MEDIUM",
         modality: str = "video_grounded_hierarchy_single",
+        video_logging: bool = False,
         **kwargs,
     ):
         self.model_name = model_name
@@ -85,20 +88,32 @@ class RVLM:
             try:
 
                 modality, processing, reasoning = self.modality.rsplit("_", 2)
-                assert modality in ["video", "image", "all_frames", "all_frames_grounded", "all_frames_ungrounded", "stacked_frames", "single_frames", "stacked_frames_grounded", "video_grounded"]
-                assert processing in ["hierarchy", "endtoend"]
+                assert modality in ["video", "video_roboreward", "image", "all_frames", "all_frames_grounded", "all_frames_ungrounded", "stacked_frames", "single_frames", "stacked_frames_grounded", "video_grounded"]
+                assert processing in ["hierarchy", "endtoend", "naive"]
                 assert reasoning in ["single", "distributional", "rubric", "no_completion_state", "roboreward", "experimental"]
 
                 # assert modality in ["video", "image", "all_frames", "stacked_frames", "single_frames"]
 
+                if processing == "naive":
+                    assert modality in ["video"]
+                    results = await get_progress_from_video_naive(frames_array, task_description, model_id=self.model_name, thinking_level=self.thinking_level)
+                    progress = response_to_json(results)["progress"]
+                    text = results.text
+
                 if processing == "endtoend":
-                    assert reasoning in ["single"]
-                    assert modality in ["video", "all_frames"]
+                    assert reasoning in ["single", "roboreward"]
+                    assert modality in ["video", "video_roboreward", "all_frames"]
                     
                     if modality == "video":
                         results = await get_progress_from_video(frames_array, task_description, model_id=self.model_name, thinking_level=self.thinking_level)
                         progress = response_to_json(results)["progress"]
                         # progress = [v for v in progress.values()]
+                        text = results.text
+                    elif modality == "video_roboreward":
+                        results = await get_progress_from_video_roboreward(frames_array, task_description, model_id=self.model_name, thinking_level=self.thinking_level)
+                        score = response_to_json(results)["score"]
+                        normalized = (score - 1) / 4 * 100
+                        progress = [normalized] * len(frames_array)
                         text = results.text
                     elif modality == "all_frames":
                         results = await get_progress_from_all_frames(frames_array, task_description, model_id=self.model_name, thinking_level=self.thinking_level)
@@ -177,8 +192,10 @@ class RVLM:
                 break
 
             except Exception as e:
-                # raise e 
+                # raise e
+                import traceback
                 print("error computing rewards for", task_description, "\n exception: ", e)
+                traceback.print_exc()
                 if i < n_retries - 1:
                     print("retrying...")
                 else:

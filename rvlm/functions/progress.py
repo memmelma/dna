@@ -338,6 +338,43 @@ async def get_progress_from_description_rubric(
         include_thoughts=False,
     )
 
+async def get_progress_from_video_naive(
+    video: np.ndarray,
+    task: str,
+    model_id: str = "gemini-3-flash-preview",
+    thinking_level: str = "LOW",
+):
+    prompt = textwrap.dedent(
+        f"""\
+
+        Task:
+        "{{task}}"
+
+        1. The task text fixes which objects count (category, color, shape, and wording). The video frames are the only evidence of what is in the environment. Do not "ground" the task by renaming visible objects to match the task.
+        2. For each object the task requires, it may be tied only to objects visible in the video that refer to that same entity without contradiction. Do not substitute a different object because it could serve the same role. If the visual appearance of an object conflicts with the task's description of that object, or no clear referent is visible, treat that requirement as absent.
+        3. You may track the same physical object across frames only when it is plainly the same entity already visible in the video—not to map task nouns onto other objects.
+        4. For each timestep, reason about the % progress towards that fully completed state (0-100%).
+        
+        Respond with a list of progress values (ordered by frame) in the following JSON format:
+        [
+            {{
+                "progress": [int, int, ...]
+            }}
+        ]
+    """
+    )
+
+    prompt = prompt.replace("{task}", task)
+
+    res = await call_api(
+        prompt,
+        video_input=video,
+        thinking_level=thinking_level,
+        model_id=model_id,
+        json_output=True,
+        include_thoughts=False,
+    )
+    return res
 
 async def get_progress_from_video(
     video: np.ndarray,
@@ -369,6 +406,54 @@ async def get_progress_from_video(
         ]
 
         Before you respond, reflect whether the task is actually fully completed, otherwise adjust the progress values!
+    """
+    )
+
+    prompt = prompt.replace("{task}", task)
+
+    res = await call_api(
+        prompt,
+        video_input=video,
+        thinking_level=thinking_level,
+        model_id=model_id,
+        json_output=True,
+        include_thoughts=False,
+    )
+    return res
+
+
+async def get_progress_from_video_roboreward(
+    video: np.ndarray,
+    task: str,
+    model_id: str = "gemini-3-flash-preview",
+    thinking_level: str = "MEDIUM",
+):
+    prompt = textwrap.dedent(
+        f"""\
+
+        Task:
+        "{{task}}"
+
+        Given the task instruction and the robot's rollout video, assign a discrete progress score reward (1, 2, 3, 4, 5) for the robot's performance. Judge only the final state without considering time limits.
+
+        Rubric for End-of-Episode Progress:
+        * 1 - No Success: The final state shows no goal-relevant change for the command.
+        * 2 - Minimal Progress: The final state shows a small but insufficient change toward the goal.
+        * 3 - Partial Completion: The final state shows good progress toward the goal but violates more than one requirement or a major requirement.
+        * 4 - Near Completion: The final state is correct in region and intent but misses a single minor requirement.
+        * 5 - Perfect Completion: The final state visibly satisfies all requirements.
+
+        Hints & Clarifications for Scoring (Particularly 3 vs. 4):
+        To correctly distinguish between a Partial Completion (3) and a Near Completion (4), you must differentiate between MAJOR and MINOR task requirements based on the following rules:
+        * Treat a requirement as MAJOR when the PRIMARY object identity or the PRIMARY spatial relation to the reference object is not satisfied. If a major requirement is missed, the score must be 3 or lower.
+        * Treat a requirement as MINOR when the PRIMARY object identity and PRIMARY spatial relation to the reference object are satisfied, but an AUXILIARY constraint is missed (e.g., the orientation of the object is slightly off, or the object is placed a bit too far forward/backward but still in the correct general region). Missing a single minor requirement results in a score of 4.
+
+        Provide a brief step-by-step reasoning analyzing the observation against the rubric and hints. Conclude with your final discrete score in the following JSON format: 
+        [
+            {{
+                "score": int
+            }}
+        ]
     """
     )
 
