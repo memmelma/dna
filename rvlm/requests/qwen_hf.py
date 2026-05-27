@@ -29,10 +29,13 @@ def _qwen_model_classes():
 
 
 class QwenHFResponse:
-    """Matches Gemini/GPT: callers use ``response.text``."""
+    """Matches Gemini/GPT: callers use ``response.text``.
+    ``response.thinking`` holds the raw ``<think>…</think>`` block (empty string if absent).
+    """
 
-    def __init__(self, text: str):
+    def __init__(self, text: str, thinking: str = ""):
         self.text = text
+        self.thinking = thinking
 
 
 _MODEL_CACHE: dict[str, tuple[Any, Any]] = {}
@@ -42,12 +45,16 @@ _LOAD_LOCK = threading.Lock()
 def _resolve_hf_model_id(model_id: str) -> str:
     aliases = {
         "qwen3-vl-8b-instruct": "Qwen/Qwen3-VL-8B-Instruct",
+        # "qwen3-vl-8b-thinking": "Qwen/Qwen3-VL-8B-Thinking",
+        # "qwen3-vl-32b-instruct": "Qwen/Qwen3-VL-32B-Instruct",
+        # "qwen3-vl-32b-thinking": "Qwen/Qwen3-VL-32B-Thinking",
     }
-    key = model_id.strip()
+    key = model_id.strip().lower()
     if key in aliases:
         return aliases[key]
-    if "/" in key and not key.startswith("qwen-"):
-        return key
+    raw = model_id.strip()
+    if "/" in raw:
+        return raw
     return "Qwen/Qwen3-VL-8B-Instruct"
 
 
@@ -92,7 +99,7 @@ def _generation_kwargs(
         "top_p": spec["top_p"],
         "top_k": spec["top_k"],
         "repetition_penalty": spec["repetition_penalty"],
-        "max_new_tokens": spec["max_output_length"], # max_new,
+        "max_new_tokens": max_new,
     }
 
 
@@ -105,14 +112,12 @@ def _load_model(hf_model_id: str) -> tuple[Any, Any]:
                 torch_dtype="auto",
                 device_map="auto",
             )
-            # try:
-            #     kwargs["attn_implementation"] = "flash_attention_2"
-            #     model = model_cls.from_pretrained(**kwargs)
-            # except Exception:
-            #     kwargs.pop("attn_implementation", None)
-            #     model = model_cls.from_pretrained(**kwargs)
-            kwargs["attn_implementation"] = "flash_attention_2"
-            model = model_cls.from_pretrained(**kwargs)
+            try:
+                kwargs["attn_implementation"] = "flash_attention_2"
+                model = model_cls.from_pretrained(**kwargs)
+            except Exception:
+                kwargs.pop("attn_implementation", None)
+                model = model_cls.from_pretrained(**kwargs)
             
             processor = proc_cls.from_pretrained(hf_model_id, trust_remote_code=True)
             model.eval()
@@ -175,8 +180,12 @@ def _generate_sync(
     thinking_level: str,
     hf_model_id: str,
     video_fps: float,
-) -> str:
-    content, tmp_video = _build_user_content(prompt, video_input, img_input, video_fps)
+) -> tuple[str, str]:
+    # Qwen3-VL Thinking edition: the chat template auto-injects <think> start; just
+    # pass the prompt as-is.  Instruct edition does not think regardless of /think.
+    effective_prompt = prompt
+
+    content, tmp_video = _build_user_content(effective_prompt, video_input, img_input, video_fps)
     messages = [{"role": "user", "content": content}]
     try:
         model, processor = _load_model(hf_model_id)
@@ -204,7 +213,25 @@ def _generate_sync(
         out = processor.batch_decode(
             new_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
         )
-        return out[0].strip()
+        raw = out[0].strip()
+        import re as _re
+        # Thinking edition: template injects opening <think> before generation, so the
+        # output starts with the thinking content followed by </think>\n<answer>.
+        # Instruct edition: no <think> block at all.
+        think_match = _re.search(r"<think>(.*?)</think>", raw, flags=_re.DOTALL)
+        if think_match:
+            thinking_text = think_match.group(1).strip()
+            answer = _re.sub(r"<think>.*?</think>", "", raw, flags=_re.DOTALL).strip()
+        else:
+            # Thinking model: output starts directly with thinking content, ends with </think>
+            orphan_close = _re.search(r"(.*?)</think>\s*", raw, flags=_re.DOTALL)
+            if orphan_close:
+                thinking_text = orphan_close.group(1).strip()
+                answer = raw[orphan_close.end():].strip()
+            else:
+                thinking_text = ""
+                answer = raw
+        return answer, thinking_text
     finally:
         if tmp_video and tmp_video.startswith(tempfile.gettempdir()):
             try:
@@ -222,20 +249,19 @@ async def call_qwen_hf(
     video_fps: float = 1.0,
     json_output: bool = False,
     response_schema=None,
+    enable_thinking: bool = False,
+    include_thoughts: bool = False,
 ):
     """
     Run Qwen3-VL via Hugging Face ``transformers`` (local GPU/CPU).
 
-    ``model_id`` can be a full HF id (e.g. ``Qwen/Qwen3-VL-8B-Instruct``) or a short alias
-    like ``qwen3-vl-8b-instruct``. Generation follows the Qwen3-VL model card (VL vs text-only);
-    ``thinking_level`` caps ``max_new_tokens`` below the card ``out_seq_length``.
-
-    ``json_output`` / ``response_schema`` are accepted for API parity with Gemini/GPT; structured
-    output is not enforced in the local HF path (prompts should request JSON when needed).
+    Thinking is auto-detected from the resolved model id: Qwen3-VL-*-Thinking models
+    emit a thinking block which is stripped from ``.text`` and stored in ``.thinking``.
+    Instruct models do not think regardless of ``enable_thinking``.
     """
-    _ = (json_output, response_schema)
+    _ = (json_output, response_schema, include_thoughts, enable_thinking)
     hf_id = _resolve_hf_model_id(model_id)
-    text = await asyncio.to_thread(
+    result = await asyncio.to_thread(
         _generate_sync,
         prompt,
         video_input,
@@ -244,4 +270,5 @@ async def call_qwen_hf(
         hf_id,
         video_fps,
     )
-    return QwenHFResponse(text)
+    answer, thinking = result
+    return QwenHFResponse(answer, thinking)
