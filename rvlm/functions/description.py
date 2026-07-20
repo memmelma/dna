@@ -37,6 +37,16 @@ def _stack_frames_into_image(frames: np.ndarray, max_cols: int = 4) -> np.ndarra
     return np.concatenate(strips, axis=0)
 
 
+def get_cached_objects(video: np.ndarray, task: str) -> list | None:
+    """Return the grounded object list cached for ``(task, video)``, or None.
+
+    The grounding step in ``get_description_from_video_grounded`` caches the
+    detected objects keyed by task + video fingerprint. This accessor lets
+    callers (e.g. terminal logging) read them back without re-running grounding.
+    """
+    return _grounding_cache.get((task, _video_fingerprint(video)))
+
+
 def _parse_descriptions_payload(parsed: object) -> list[dict]:
     if not isinstance(parsed, list):
         parsed = [parsed]
@@ -91,7 +101,6 @@ async def get_description_from_video_grounded(
             thinking_level=thinking_level,
             model_id=model_id,
             json_output=True,
-            media_resolution="MEDIA_RESOLUTION_LOW",
         )
         res_json = json.loads(res.text)[0]
         objects = res_json["all_objects"]
@@ -132,7 +141,6 @@ async def get_description_from_video_grounded(
         thinking_level=thinking_level,
         model_id=model_id,
         json_output=True,
-        media_resolution="MEDIA_RESOLUTION_LOW",
     )
 
     return _parse_descriptions_payload(json.loads(res.text))
@@ -178,7 +186,6 @@ async def get_description_from_video(
         thinking_level=thinking_level,
         model_id=model_id,
         json_output=True,
-        media_resolution="MEDIA_RESOLUTION_LOW",
     )
 
     return _parse_descriptions_payload(json.loads(res.text))
@@ -227,7 +234,6 @@ async def get_description_from_all_frames(
         thinking_level=thinking_level,
         model_id=model_id,
         json_output=True,
-        media_resolution="MEDIA_RESOLUTION_LOW",
     )
     return _parse_descriptions_payload(json.loads(res.text))
 
@@ -264,7 +270,6 @@ async def get_description_from_all_frames_grounded(
             thinking_level=thinking_level,
             model_id=model_id,
             json_output=True,
-            media_resolution="MEDIA_RESOLUTION_LOW",
         )
         res_json = json.loads(res.text)[0]
         objects = res_json["all_objects"]
@@ -292,7 +297,6 @@ async def get_description_from_all_frames_grounded(
         thinking_level=thinking_level,
         model_id=model_id,
         json_output=True,
-        media_resolution="MEDIA_RESOLUTION_LOW",
     )
     return _parse_descriptions_payload(json.loads(res.text))
 
@@ -328,7 +332,6 @@ async def get_description_from_all_frames_ungrounded(
         thinking_level=thinking_level,
         model_id=model_id,
         json_output=True,
-        media_resolution="MEDIA_RESOLUTION_LOW",
     )
     return _parse_descriptions_payload(json.loads(res.text))
 
@@ -363,7 +366,6 @@ async def get_description_from_stacked_frames(
         thinking_level=thinking_level,
         model_id=model_id,
         json_output=True,
-        media_resolution="MEDIA_RESOLUTION_LOW",
     )
     return _parse_descriptions_payload(json.loads(res.text))
 
@@ -395,7 +397,6 @@ async def get_description_from_stacked_frames_grounded(
             thinking_level=thinking_level,
             model_id=model_id,
             json_output=True,
-            media_resolution="MEDIA_RESOLUTION_LOW",
         )
         res_json = json.loads(res.text)[0]
         objects = res_json["all_objects"]
@@ -414,7 +415,6 @@ async def get_description_from_stacked_frames_grounded(
         thinking_level=thinking_level,
         model_id=model_id,
         json_output=True,
-        media_resolution="MEDIA_RESOLUTION_LOW",
     )
     return _parse_descriptions_payload(json.loads(res.text))
 
@@ -443,7 +443,6 @@ async def get_description_from_single_frames(
             thinking_level=thinking_level,
             model_id=model_id,
             json_output=True,
-            media_resolution="MEDIA_RESOLUTION_LOW",
         )
         data = json.loads(res.text)
         if isinstance(data, list):

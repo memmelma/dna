@@ -1,22 +1,18 @@
 [project]
 name = "reward-vlm"
-version = "0.0.1"
-description = "Vision-Language Model based reward functions"
+version = "0.1.0"
+description = "Vision-Language Model based reward functions for robotic manipulation"
 requires-python = ">=3.10"
 dependencies = [
     "google-genai",
     "openai",
+    "anthropic",
+    "httpx",
     "imageio",
+    "imageio-ffmpeg",
     "numpy",
     "pillow",
     "matplotlib",
-]
-
-[project.optional-dependencies]
-qwen = [
-    "torch",
-    "accelerate",
-    "transformers>=4.57",
 ]
 
 [build-system]
@@ -28,3 +24,24 @@ packages = ["rvlm"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[dependency-groups]
+# Local Qwen-VL inference (in development). Not installed by default — opt in
+# with `uv sync --group qwen`.
+qwen = [
+    "torch",
+    "accelerate",
+    "transformers>=4.57",
+]
+
+[tool.uv]
+# `uv sync` installs only the base dependencies by default; the in-development
+# qwen group is opt-in via `uv sync --group qwen`.
+default-groups = []
+
+# Add public PyPI as a fallback index. A user's global uv config may set a
+# private mirror (e.g. an internal CodeArtifact) that doesn't carry every
+# dependency such as imageio-ffmpeg; this ensures those still resolve.
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"

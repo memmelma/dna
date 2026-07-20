@@ -8,6 +8,7 @@ import asyncio
 import inspect
 import io
 import os
+import re
 import tempfile
 import threading
 from typing import Any
@@ -274,17 +275,16 @@ def _generate_sync(
             new_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
         )
         raw = out[0].strip()
-        import re as _re
         # Thinking edition: template injects opening <think> before generation, so the
         # output starts with the thinking content followed by </think>\n<answer>.
         # Instruct edition: no <think> block at all.
-        think_match = _re.search(r"<think>(.*?)</think>", raw, flags=_re.DOTALL)
+        think_match = re.search(r"<think>(.*?)</think>", raw, flags=re.DOTALL)
         if think_match:
             thinking_text = think_match.group(1).strip()
-            answer = _re.sub(r"<think>.*?</think>", "", raw, flags=_re.DOTALL).strip()
+            answer = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
         else:
             # Thinking model: output starts directly with thinking content, ends with </think>
-            orphan_close = _re.search(r"(.*?)</think>\s*", raw, flags=_re.DOTALL)
+            orphan_close = re.search(r"(.*?)</think>\s*", raw, flags=re.DOTALL)
             if orphan_close:
                 thinking_text = orphan_close.group(1).strip()
                 answer = raw[orphan_close.end():].strip()
