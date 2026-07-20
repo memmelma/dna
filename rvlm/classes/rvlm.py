@@ -46,12 +46,14 @@ class RVLM:
         thinking_level: str = "MEDIUM",
         modality: str = "video_grounded_hierarchy_single",
         video_logging: bool = False,
+        text_logging: bool = False,
         **kwargs,
     ):
         self.model_name = model_name
         self.thinking_level = thinking_level
         self.modality = modality
         self.video_logging = video_logging
+        self.text_logging = text_logging
         self.ctr = 0
 
         self.object_cache = {}
@@ -60,7 +62,7 @@ class RVLM:
         self.timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
         self.root_dir = None
-        if self.video_logging:
+        if self.video_logging or self.text_logging:
             try:
                 self.root_dir = f"/gpfs/home/memmelma/projects/rvlm/tmp/{self.timestamp}"
                 os.makedirs(self.root_dir, exist_ok=True)
@@ -248,14 +250,18 @@ class RVLM:
                 out.append(np.concatenate([video[t], plot_img], axis=1))
             return np.stack(out, axis=0)
 
-        if self.video_logging and self.root_dir is not None:
-            video = progress_video(frames_array, progress, task_description)
-            imageio.mimwrite(f"{self.root_dir}/{self.ctr}_video_{max(progress)*100:.0f}.mp4", video, fps=1)
-            imageio.mimwrite(f"{self.root_dir}/{self.ctr}_video_raw_{max(progress)*100:.0f}.mp4", frames_array, fps=1)
+        if (self.video_logging or self.text_logging) and self.root_dir is not None:
+            max_progress_pct = max(progress) * 100 if len(progress) else 0.0
 
-            print(f"{self.root_dir}/{self.ctr}_text_history_{max(progress)*100:.0f}.txt")
+            if self.video_logging:
+                video = progress_video(frames_array, progress, task_description)
+                imageio.mimwrite(f"{self.root_dir}/{self.ctr}_video_{max_progress_pct:.0f}.mp4", video, fps=1)
+                imageio.mimwrite(f"{self.root_dir}/{self.ctr}_video_raw_{max_progress_pct:.0f}.mp4", frames_array, fps=1)
 
-            with open(f"{self.root_dir}/{self.ctr}_text_history_{max(progress)*100:.0f}.txt", "w") as f:
+            text_history_path = f"{self.root_dir}/{self.ctr}_text_history_{max_progress_pct:.0f}.txt"
+            print(text_history_path)
+
+            with open(text_history_path, "w") as f:
                 f.write(task_description + "\n" + str(description_raw) + "\n" + str(description) + "\n" + str(text))
             self.ctr += 1
 

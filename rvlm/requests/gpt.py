@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import io
+import json
 import os
 
 import imageio
@@ -162,4 +163,17 @@ async def call_gpt(
         else:
             kwargs["response_format"] = {"type": "json_object"}
 
-    return await _key_pool.create(**kwargs)
+    resp = await _key_pool.create(**kwargs)
+
+    # NOTE: rvlm's prompts ask for a top-level JSON array, but OpenAI's
+    # response_format={"type": "json_object"} strictly requires a top-level
+    # object. Older GPT models were lenient and still emitted an array anyway;
+    # gpt-5.6 (luna/sol/terra) is stricter and returns a bare object, breaking
+    # every ``json.loads(res.text)[0]`` call site in rvlm.functions.*. Normalize
+    # here so both behaviors are supported transparently.
+    if json_output:
+        parsed = json.loads(resp.text)
+        if isinstance(parsed, dict):
+            resp.text = json.dumps([parsed])
+
+    return resp
