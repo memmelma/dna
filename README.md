@@ -19,7 +19,7 @@ uv sync                       # base install (all hosted API backends)
 uv sync --group qwen          # also install local Qwen-VL inference — in development
 
 # run anything in the environment without activating it:
-uv run python -c "from rvlm import DNA"
+uv run python -c "from dna import DNA"
 # ...or activate it:
 source .venv/bin/activate
 ```
@@ -31,7 +31,7 @@ pip install -e .
 pip install --group qwen      # optional: local Qwen-VL inference — in development (pip >= 25.1)
 ```
 
-Copy `rvlm/secrets.py.example` to `rvlm/secrets.py` and fill in the API keys for
+Copy `dna/secrets.py.example` to `dna/secrets.py` and fill in the API keys for
 the providers you plan to use. OpenRouter reads the `OPENROUTER_API_KEY`
 environment variable (falling back to `OPENROUTER_API_KEYS` in `secrets.py`).
 
@@ -39,7 +39,7 @@ environment variable (falling back to `OPENROUTER_API_KEYS` in `secrets.py`).
 
 ```python
 import numpy as np
-from rvlm import DNA
+from dna import DNA
 
 frames = np.load("rollout.npy")          # (N, H, W, 3) uint8 video
 dna = DNA(model="gemini-3-flash-preview", method="dna")
@@ -81,7 +81,7 @@ Select a backend via the `model` argument; routing is by prefix.
 | Google Gemini          | `gemini-3-flash-preview`                 | `GOOGLE_API_KEYS`                |
 | OpenAI GPT             | `gpt-4o`, `o3`                           | `OPENAI_API_KEYS`                |
 | Anthropic Claude       | `claude-sonnet-4-20250514`               | `ANTHROPIC_API_KEYS`             |
-| OpenRouter (any model) | `openrouter/openai/gpt-5.6-terra`, `openrouter/anthropic/claude-opus-4.8` | `OPENROUTER_API_KEY` |
+| OpenRouter (any model) | `openrouter/openai/gpt-5.6-terra`, `openrouter/openai/gpt-5.6-luna`, `openrouter/anthropic/claude-opus-4.8`, `openrouter/google/gemini-3-pro-preview` | `OPENROUTER_API_KEY` |
 | Meta Muse Spark        | `muse-spark-1.1`                         | `META_API_KEYS`                  |
 | Qwen-VL (local) ⚠️      | `Qwen/Qwen3-VL-8B-Instruct`              | none (local GPU)                 |
 

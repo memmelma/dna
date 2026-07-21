@@ -1,0 +1,12 @@
+gradio
+# rvlm runtime deps (mirrors reward_vlm/pyproject.toml; the qwen group is omitted
+# — it needs a local GPU and is in development).
+google-genai
+openai
+anthropic
+httpx
+imageio
+imageio-ffmpeg
+numpy
+pillow
+matplotlib
