@@ -140,6 +140,78 @@ async def get_progress_from_description_failure(
     )
     return res
 
+async def get_progress_from_description_failure_extra(
+    description: dict,
+    task: str,
+    model_id: str = "gemini-3-flash-preview",
+    thinking_level: str = "MEDIUM",
+    extra_instruction: str | None = None,
+):
+    """Progress + failure/feedback with an optional global assess-stage instruction.
+
+    Standalone copy of ``get_progress_from_description_failure`` used by the
+    ``dna_extra`` mode. ``extra_instruction`` is a global natural-language
+    instruction injected into the scoring prompt (e.g. "consider smoothness of
+    the trajectory", "pay special attention to gripper open/close"). Defaults to
+    ``None``, in which case this behaves like the base failure variant.
+    """
+    instruction_block = ""
+    if extra_instruction:
+        instruction_block = (
+            "\n<additional_instructions>\n"
+            f"{extra_instruction}\n"
+            "</additional_instructions>\n"
+        )
+
+    prompt = textwrap.dedent(
+        f"""\
+
+        Task:
+        "{{task}}"
+
+        Scene descriptions:
+        {{description}}
+        {{instruction_block}}
+        1. The task text fixes which objects count (category, color, shape, and wording). Scene descriptions are the only evidence of what is in the environment. Do not "ground" the task by renaming scene objects to match the task.
+        2. For each object the task requires, it may be tied only to scene mentions that refer to that same entity without contradiction. Do not substitute a different object because it could serve the same role. If attributes in the scene conflict with the task's description of that object, or no clear referent exists, treat that requirement as absent.
+        3. You may align short paraphrases across timesteps only when they plainly denote the same physical object already present in the scene—not to map task nouns onto other objects.
+        4. If ALL required objects are absent by these rules, the task cannot be completed in this scene: use all 0% progress and explain in "completion state". Otherwise define precisely what the environment would look like if the task were FULLY and COMPLETELY finished (not started, not halfway—entirely done). Reward partial progress if the task is only partially completed and some required objects are present.
+        5. For each timestep, reason about the % progress towards that fully completed state.
+        6. Progress is defined as % progress towards the fully completed state. Progress does not have to be monotonic, i.e., the robot can reverse progress.
+        7. If the task was not fully completed, describe the failure.
+        8. If the task was not fully completed, give feedback on what the robot should have done differently.
+
+        Respond with a list of progress values (ordered by frame) in the following JSON format:
+        [
+            {{
+                "failure": str,
+                "feedback": str,
+                "completion state": str,
+                "progress": [int, int, ...]
+            }}
+        ]
+
+        Before you respond, reflect whether the task is actually fully completed, otherwise adjust the progress values!
+    """
+    )
+
+    prompt = prompt.replace("{task}", task)
+    prompt = prompt.replace("{description}", json.dumps(description))
+    prompt = prompt.replace("{instruction_block}", instruction_block)
+
+    if "qwen" in model_id.lower():
+        # NOTE: Qwen models require a fixed number of progress values, otherwise produce N-1 progress values
+        prompt = prompt.replace("Respond with a list of progress values", f"Respond with a list of {len(description)} progress values")
+
+    res = await call_api(
+        prompt,
+        thinking_level=thinking_level,
+        model_id=model_id,
+        json_output=True,
+        include_thoughts=False,
+    )
+    return res
+
 async def get_progress_from_description_roboreward(
     description: dict,
     task: str,
