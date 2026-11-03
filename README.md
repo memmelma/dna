@@ -9,7 +9,7 @@
   <a href="https://weirdlabuw.github.io/dna/"><b>Website</b></a> &nbsp;·&nbsp;
   <a href="https://weirdlabuw.github.io/dna/demo/"><b>Demo</b></a> &nbsp;·&nbsp;
   <a href="https://huggingface.co/datasets/memmelma/dnabench"><b>D&amp;A-Bench dataset</b></a> &nbsp;·&nbsp;
-  <b>Paper</b> (coming soon)
+  <a href="https://arxiv.org/abs/2611.03622"><b>Paper</b></a>
 </p>
 
 **D&A** turns a robot video and a task description into a **per-frame progress signal** in `[0, 1]`
@@ -121,14 +121,17 @@ most uses.
 
 ## Citation
 
-This is a preprint. If you find D&A useful for your work, please cite:
+If you find D&A useful for your work, please cite:
 
 ```bibtex
 @misc{memmel2026dna,
   title={D\&A: Decoupling Description and Assessment Enables VLMs as Zero-Shot Robotic Reward Models},
   author={Memmel, Marius and Yin, Shawn and Rutia, Urvi and Wadhwa, Angad and Li, Eldon and Angeloff, Gavin and Goyal, Ankit and Zhang, Jesse and Fox, Dieter and Ramos, Fabio and Li, Anqi and Gupta, Abhishek},
   year={2026},
-  note={Preprint}
+  eprint={2611.03622},
+  archivePrefix={arXiv},
+  primaryClass={cs.RO},
+  url={https://arxiv.org/abs/2611.03622}
 }
 ```
 
