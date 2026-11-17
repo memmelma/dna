@@ -8,6 +8,7 @@
 <p>
   <a href="https://weirdlabuw.github.io/dna/"><b>Website</b></a> &nbsp;·&nbsp;
   <a href="https://weirdlabuw.github.io/dna/demo/"><b>Demo</b></a> &nbsp;·&nbsp;
+  <a href="https://x.com/memmelma/status/2122744817667219927"><b>Cheatsheet</b></a> &nbsp;·&nbsp;
   <a href="https://huggingface.co/datasets/memmelma/dnabench"><b>D&amp;A-Bench dataset</b></a> &nbsp;·&nbsp;
   <a href="https://arxiv.org/abs/2611.03622"><b>Paper</b></a>
 </p>
